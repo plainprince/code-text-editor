@@ -158,17 +158,19 @@ function createFolderDiv(
         </div>
     `;
   // Toggle open/close on header click
-  headerDiv.addEventListener("click", (e) => {
+headerDiv.addEventListener("click", (e) => {
+    fileExplorerInstance._openFolders[folderPath] =
+        !fileExplorerInstance._openFolders[folderPath];
+    // Re-render the whole explorer (could optimize to just this branch)
+    fileExplorerInstance.loadCurrentDirectory();
     if (e.detail === 1) { // single click
         updateSelection(fileExplorerInstance, headerDiv.dataset.path, e.ctrlKey, e.shiftKey);
     }
-  });
-    headerDiv.addEventListener("dblclick", (e) => {
-    fileExplorerInstance._openFolders[folderPath] =
-      !fileExplorerInstance._openFolders[folderPath];
-    // Re-render the whole explorer (could optimize to just this branch)
-    fileExplorerInstance.loadCurrentDirectory();
-  });
+});
+headerDiv.addEventListener("dblclick", (e) => {
+    // a dblclick is always preceded by a click, so the folder is already toggled
+    // if you want a separate dblclick action, you'd need to use a timer to distinguish
+});
   // Right-click context menu for folders
   headerDiv.addEventListener("contextmenu", (e) => {
     showContextMenuForEntry(e, entry, fileExplorerInstance);
@@ -206,14 +208,6 @@ function createFolderDiv(
     }
   }
   folderDiv.appendChild(childrenDiv);
-
-  // Add a placeholder if the folder is empty
-  if (sortedEntries.length === 0) {
-    const emptyMsg = document.createElement('div');
-    emptyMsg.className = 'empty-folder-message';
-    emptyMsg.textContent = 'Empty';
-    childrenDiv.appendChild(emptyMsg);
-  }
   }
   return folderDiv;
 }

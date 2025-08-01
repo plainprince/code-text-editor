@@ -11,15 +11,15 @@ export default class ExplorerActions {
 
     // Move file or folder
     async moveItem(src, dest) {
-        try {
-            await Neutralino.filesystem.moveFile(src, dest);
-            this.fileExplorer.loadCurrentDirectory();
-            return true;
-        } catch (e) {
-            this.fileExplorer.showNotification({ message: `Error moving item: ${e.message}`, type: 'error' });
-            return false;
-        }
+    try {
+        await Neutralino.filesystem.move(src, dest);
+        this.fileExplorer.loadCurrentDirectory();
+        return true;
+    } catch (e) {
+        this.fileExplorer.showNotification({ message: `Error moving item: ${e.message}`, type: 'error' });
+        return false;
     }
+}
 
     // Duplicate file or folder
     async duplicateItem(src) {

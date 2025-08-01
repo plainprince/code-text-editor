@@ -11,6 +11,7 @@ window.setLeftPanel = function(panel) {
   const outlineBtn = document.getElementById("outline-panel-button");
   const collabBtn = document.getElementById("collab-panel-button");
   const searchBtn = document.getElementById("search-project-button");
+const newPanelBtn = document.getElementById("new-panel-button");
 
   const panelMap = {
     "project-panel": projectBtn,
@@ -18,6 +19,7 @@ window.setLeftPanel = function(panel) {
     "outline-panel": outlineBtn,
     "collab-panel": collabBtn,
     "find-in-project-panel": searchBtn,
+"new-panel": newPanelBtn,
   };
 
   // Remove highlight from all buttons
@@ -63,9 +65,10 @@ window.setLeftPanel = function(panel) {
     case "outline-panel":
     case "collab-panel":
     case "find-in-project-panel":
-      const panelContent = sidebar.querySelector(`#${panel}`);
-      if(panelContent) panelContent.style.display = '';
-      break;
+case "new-panel":
+    const panelContent = sidebar.querySelector(`#${panel}`);
+    if(panelContent) panelContent.style.display = '';
+    break;
     default:
       // By default, hide the sidebar if the panel is unknown
       sidebar.style.display = 'none';
@@ -313,6 +316,7 @@ async function main() {
   const outlineBtn = document.getElementById("outline-panel-button");
   const collabBtn = document.getElementById("collab-panel-button");
   const searchBtn = document.getElementById("search-project-button");
+const newPanelBtn = document.getElementById("new-panel-button");
   const findInProjectInput = document.getElementById("find-in-project-input");
   const aiPanelBtn = document.getElementById("ai-panel-statusbar-button");
 
@@ -330,7 +334,10 @@ async function main() {
   }
   if (searchBtn) {
     searchBtn.addEventListener("click", () => setLeftPanel("find-in-project-panel"));
-  }
+}
+if (newPanelBtn) {
+    newPanelBtn.addEventListener("click", () => setLeftPanel("new-panel"));
+}
   if(findInProjectInput) {
     findInProjectInput.addEventListener("input", (e) => {
       if (window.fileExplorer) {

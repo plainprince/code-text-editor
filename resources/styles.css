@@ -177,7 +177,7 @@ body {
 
 /* #statusbar styles moved to above for clarity and improved stacking */
 
-#left,
+#sidebar-left-statusbar,
 #right {
     display: flex;
     align-items: center;
@@ -187,13 +187,13 @@ body {
     flex: 0 0 auto;
 }
 
-#left span.active-panel svg {
+#sidebar-left-statusbar span.active-panel svg {
     color: var(--sidebar-active-icon, #007acc);
     stroke: var(--sidebar-active-icon, #007acc);
     fill: none;
 }
 
-#left {
+#sidebar-left-statusbar {
     justify-content: flex-start;
     margin-left: 0;
     margin-right: 0;
@@ -204,7 +204,7 @@ body {
     margin-right: 12px;
 }
 
-#left > span,
+#sidebar-left-statusbar > span,
 #right > span {
     margin: 0;
     cursor: pointer;
@@ -345,7 +345,8 @@ body {
     max-width: 80px;
     height: 100%;
 }
-.file-actions button {
+.file-actions button,
+.statusbar-button {
     background: #44475a;
     border: none;
     cursor: pointer;
@@ -388,9 +389,9 @@ body {
     min-height: 0;
     height: 20px;
     line-height: 1;
-    user-select: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
+    user-select: auto;
+    -webkit-user-select: auto;
+    -moz-user-select: auto;
     transition: background-color 0.1s ease-in-out;
 }
 
@@ -449,6 +450,7 @@ body {
     border-radius: 4px;
     color: #f8f8f2;
     transition: background 0.2s;
+    cursor: pointer;
 }
 
 .file-actions button:hover,
@@ -795,9 +797,9 @@ body {
     align-items: center;
     cursor: pointer;
     padding: 0 2px;
-    user-select: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
+    user-select: auto;
+    -webkit-user-select: auto;
+    -moz-user-select: auto;
     background: transparent;
     border-bottom: 1px solid transparent;
     min-height: 0;
