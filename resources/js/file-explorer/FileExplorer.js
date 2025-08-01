@@ -76,6 +76,7 @@ export default class FileExplorer {
   }
 
   async loadLastOpenedFolders() {
+    this._openFolders = window.settings.get("fileExplorer.openFolders") || {};
     if (this.rootFolders.length > 0) {
       document.getElementById("welcome-screen").style.display = "none";
       await this.loadCurrentDirectory();
@@ -115,6 +116,18 @@ export default class FileExplorer {
     return getContextMenuItems(context);
   }
 
+  cutItem(path) {
+    this.actions.cutItem(path);
+  }
+
+  copyItem(path) {
+    this.actions.copyItem(path);
+  }
+
+  pasteItem(path) {
+    this.actions.pasteItem(path);
+  }
+
   // Actions (delegated to ExplorerActions)
   async moveItem(src, dest, isUndo = false) {
     const success = await this.actions.moveItem(src, dest);
@@ -141,13 +154,27 @@ export default class FileExplorer {
   async createNewFolder(path) {
     return this.actions.createNewFolder(path);
   }
+
+  async openFile(path) {
+    return this.actions.openFile(path);
+  }
+
+  toggleFolder(folderPath) {
+    this._openFolders[folderPath] = !this._openFolders[folderPath];
+    this.saveOpenFoldersState();
+    this.loadCurrentDirectory();
+  }
+
+  saveOpenFoldersState() {
+    window.settings.set("fileExplorer.openFolders", this._openFolders);
+  }
   async undoLastAction() {
     return this.actions.undoLastAction();
   }
 
   // Utility
-  showNotification(message, type) {
-    showNotification({ message, type });
+  showNotification(message, type, isJson = false) {
+    showNotification({ message, type, isJson });
   }
 
   // Add a root folder and refresh the explorer

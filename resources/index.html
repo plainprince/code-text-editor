@@ -265,10 +265,15 @@
                 <div id="command-palette-results">command palette results</div>
             </div>
         </div>
-        <script src="js/neutralino.js"></script>
+                <script src="js/neutralino.js"></script>
+        <script>
+            Neutralino.os.getEnvs().then(envs => {
+                window.NL_HOMEDIR = envs.HOME || envs.USERPROFILE;
+            });
+        </script>
         <script src="js/settings.js"></script>
         <script src="js/command-palette.js"></script>
         <script src="js/main.js"></script>
-</body>
+    </body>
 
 </html>

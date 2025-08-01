@@ -81,35 +81,35 @@ function updateSelection(fileExplorerInstance, path, ctrlKey, shiftKey) {
 }
 
 function createFileItem(entry, parentPath, fileExplorerInstance, config) {
-  const item = document.createElement("div");
-  item.className = "file-item";
-  item.draggable = false;
-  item.dataset.path = `${parentPath}/${entry.name}`;
-  item.dataset.type = entry.type;
-  item.dataset.name = entry.name;
-  item.innerHTML = `
+    const item = document.createElement("div");
+    item.className = "file-item";
+    item.draggable = true;
+    item.dataset.path = `${parentPath}/${entry.name}`;
+    item.dataset.type = entry.type;
+    item.dataset.name = entry.name;
+    item.innerHTML = `
         ${createFileIcon(entry, config)}
         <div class="file-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
             <p style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${entry.name}</p>
         </div>
     `;
-  // Click to select/open
-  item.addEventListener("click", (e) => {
-    updateSelection(fileExplorerInstance, item.dataset.path, e.ctrlKey, e.shiftKey);
-  });
-  // Double click to open
-  item.addEventListener("dblclick", (e) => {
-    if (
-      fileExplorerInstance &&
-      typeof fileExplorerInstance.openFileInEditor === "function"
-    ) {
-      fileExplorerInstance.openFileInEditor(item.dataset.path);
-    }
-  });
-  // Right-click context menu
-  item.addEventListener("contextmenu", (e) => {
-    showContextMenuForEntry(e, entry, fileExplorerInstance);
-  });
+    // Click to select/open
+    item.addEventListener("click", (e) => {
+        updateSelection(fileExplorerInstance, item.dataset.path, e.ctrlKey || e.metaKey, e.shiftKey);
+    });
+    // Double click to open
+    item.addEventListener("dblclick", (e) => {
+        if (
+            fileExplorerInstance &&
+            typeof fileExplorerInstance.openFileInEditor === "function"
+        ) {
+            fileExplorerInstance.openFileInEditor(item.dataset.path);
+        }
+    });
+    // Right-click context menu
+    item.addEventListener("contextmenu", (e) => {
+        showContextMenuForEntry(e, entry, fileExplorerInstance);
+    });
 
     item.addEventListener('mouseenter', (e) => {
         fileExplorerInstance.startTooltipTimer(e, item.dataset.path);
@@ -118,8 +118,8 @@ function createFileItem(entry, parentPath, fileExplorerInstance, config) {
     item.addEventListener('mouseleave', () => {
         fileExplorerInstance.clearTooltipTimer();
     });
-  
-  return item;
+
+    return item;
 }
 
 function createFolderDiv(
@@ -132,7 +132,7 @@ function createFolderDiv(
 ) {
   const folderDiv = document.createElement("div");
   folderDiv.className = "file-folder";
-  folderDiv.draggable = false;
+  folderDiv.draggable = true;
   const folderPath = isRoot
     ? entry.fullPath || entry.name
     : `${parentPath}/${entry.name}`;
@@ -159,17 +159,12 @@ function createFolderDiv(
     `;
   // Toggle open/close on header click
 headerDiv.addEventListener("click", (e) => {
-    fileExplorerInstance._openFolders[folderPath] =
-        !fileExplorerInstance._openFolders[folderPath];
-    // Re-render the whole explorer (could optimize to just this branch)
-    fileExplorerInstance.loadCurrentDirectory();
     if (e.detail === 1) { // single click
-        updateSelection(fileExplorerInstance, headerDiv.dataset.path, e.ctrlKey, e.shiftKey);
+        updateSelection(fileExplorerInstance, headerDiv.dataset.path, e.ctrlKey || e.metaKey, e.shiftKey);
     }
 });
 headerDiv.addEventListener("dblclick", (e) => {
-    // a dblclick is always preceded by a click, so the folder is already toggled
-    // if you want a separate dblclick action, you'd need to use a timer to distinguish
+    fileExplorerInstance.toggleFolder(folderPath);
 });
   // Right-click context menu for folders
   headerDiv.addEventListener("contextmenu", (e) => {

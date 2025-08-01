@@ -170,4 +170,62 @@ export default class ExplorerActions {
             return null;
         }
     }
+
+    cutItem(path) {
+        this.fileExplorer.clipboard = path;
+        this.fileExplorer.clipboardType = 'cut';
+        this.fileExplorer.showNotification({ message: `Cut: ${path.split('/').pop()}`, type: 'info' });
+        this.fileExplorer.loadCurrentDirectory(); // To update context menu
+    }
+
+    copyItem(path) {
+        this.fileExplorer.clipboard = path;
+        this.fileExplorer.clipboardType = 'copy';
+        this.fileExplorer.showNotification({ message: `Copied: ${path.split('/').pop()}`, type: 'info' });
+        this.fileExplorer.loadCurrentDirectory(); // To update context menu
+    }
+
+    async pasteItem(destPath) {
+        const src = this.fileExplorer.clipboard;
+        const type = this.fileExplorer.clipboardType;
+
+        if (!src) {
+            this.fileExplorer.showNotification({ message: 'Clipboard is empty.', type: 'warning' });
+            return;
+        }
+
+        const fileName = src.substring(src.lastIndexOf('/') + 1);
+        let targetDir;
+
+        try {
+            const stats = await Neutralino.filesystem.getStats(destPath);
+            targetDir = stats.isDirectory ? destPath : destPath.substring(0, destPath.lastIndexOf('/'));
+        } catch (e) {
+            this.fileExplorer.showNotification({ message: `Invalid destination: ${destPath}`, type: 'error' });
+            return;
+        }
+
+        const finalDestPath = `${targetDir}/${fileName}`;
+
+        if (src === finalDestPath) {
+            return;
+        }
+
+        try {
+            if (type === 'copy') {
+                await Neutralino.filesystem.copy(src, finalDestPath);
+                this.fileExplorer.history.addAction({ type: 'create', path: finalDestPath });
+                this.fileExplorer.showNotification({ message: `Pasted: ${finalDestPath}` });
+            } else if (type === 'cut') {
+                await Neutralino.filesystem.move(src, finalDestPath);
+                this.fileExplorer.history.addAction({ type: 'move', from: src, to: finalDestPath });
+                this.fileExplorer.showNotification({ message: `Moved: ${finalDestPath}` });
+                this.fileExplorer.clipboard = null;
+                this.fileExplorer.clipboardType = null;
+            }
+            await this.fileExplorer.loadCurrentDirectory();
+        } catch (e) {
+            this.fileExplorer.showNotification({ message: `Paste error: ${e.message}`, type: 'error' });
+        }
+    }
 }

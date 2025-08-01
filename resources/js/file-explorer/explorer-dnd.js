@@ -16,8 +16,27 @@ export function setupExplorerDnD(fileExplorer) {
     function handleDragStart(e) {
         dragSrcEl = e.target;
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/html', e.target.innerHTML);
-        isMouseDown = false; // Reset state when drag actually starts
+        
+        // If the dragged item is not selected, select it
+        if (!fileExplorer.selectedItems.includes(dragSrcEl.dataset.path)) {
+            fileExplorer.selectedItems = [dragSrcEl.dataset.path];
+            const allItems = document.querySelectorAll('.file-item, .folder-header');
+            allItems.forEach(item => {
+                if (item.dataset.path === dragSrcEl.dataset.path) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+        
+        const dragData = {
+            items: fileExplorer.selectedItems,
+            // You can add more data here if needed
+        };
+        e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+        
+        isMouseDown = false;
     }
 
     function handleMouseMove(e) {
@@ -87,10 +106,16 @@ export function setupExplorerDnD(fileExplorer) {
             e.stopPropagation();
         }
 
-        if (dragSrcEl != this) {
-            const srcPath = dragSrcEl.dataset.path;
-            const destPath = this.dataset.path;
-            fileExplorer.moveItem(srcPath, destPath);
+        const dropTarget = e.target.closest('.file-item, .folder-header');
+        if (!dropTarget) return false;
+
+        const destPath = dropTarget.dataset.path;
+        const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
+
+        for (const srcPath of dragData.items) {
+            if (srcPath !== destPath) {
+                fileExplorer.moveItem(srcPath, destPath);
+            }
         }
         
         return false;

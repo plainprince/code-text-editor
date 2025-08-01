@@ -136,6 +136,11 @@ body {
     padding: 0 5px;
 }
 
+#editor-tabs-actions-buttons > span,
+#editor-tools > span {
+    cursor: pointer;
+}
+
 #editor-tabs-tabs-section {
     flex: 1;
     display: flex;
@@ -395,7 +400,8 @@ body {
     transition: background-color 0.1s ease-in-out;
 }
 
-.file-item:hover {
+#sidebar-left .file-item:hover,
+#sidebar-left .folder-header:hover {
     background-color: #44475a;
 }
 
@@ -805,11 +811,10 @@ body {
     min-height: 0;
     height: 20px;
     line-height: 1;
+    transition: background-color 0.1s ease-in-out;
 }
 
-.folder-header:hover {
-    background: var(--file-explorer-hover);
-}
+/* This rule is no longer necessary, it is combined with .file-item:hover */
 
 .folder-caret {
     display: none;

@@ -48,33 +48,39 @@ const newPanelBtn = document.getElementById("new-panel-button");
     activeBtn.classList.add("active-panel");
   }
 
-  // Handle panel-specific logic
-  switch (panel) {
-    case "project-panel":
       if (window.fileExplorer) {
         const fileList = sidebar.querySelector("#file-list");
-        if(fileList) {
-            fileList.style.display = '';
+        if (panel === "project-panel") {
+            if (fileList) {
+                fileList.style.display = '';
+            } else {
+                window.fileExplorer.loadCurrentDirectory();
+            }
         } else {
-            // If the file list isn't rendered, load it.
-            window.fileExplorer.loadCurrentDirectory(); 
+            if (fileList) {
+                fileList.style.display = 'none';
+            }
         }
-      }
-      break;
-    case "git-panel":
-    case "outline-panel":
-    case "collab-panel":
-    case "find-in-project-panel":
-case "new-panel":
-    const panelContent = sidebar.querySelector(`#${panel}`);
-    if(panelContent) panelContent.style.display = '';
-    break;
-    default:
-      // By default, hide the sidebar if the panel is unknown
-      sidebar.style.display = 'none';
-      currentLeftPanel = null;
-      break;
-  }
+    }
+
+    // Handle panel-specific logic
+    switch (panel) {
+        case "project-panel":
+            // Already handled above
+            break;
+        case "git-panel":
+        case "outline-panel":
+        case "collab-panel":
+        case "find-in-project-panel":
+        case "new-panel":
+            const panelContent = sidebar.querySelector(`#${panel}`);
+            if(panelContent) panelContent.style.display = '';
+            break;
+        default:
+            sidebar.style.display = 'none';
+            currentLeftPanel = null;
+            break;
+    }
 }
 
 let currentRightPanel = null;
@@ -229,15 +235,32 @@ window.openProject = async function openProject() {
 };
 
 function showNotification(options) {
-    const { message, type = 'info', duration = 5000, buttons = [], onClick } = options;
+    let { message, type = 'info', duration = 5000, buttons = [], onClick, isJson = false } = options;
 
+    if (typeof message === 'object' && message !== null) {
+        message = JSON.stringify(message, null, 4);
+        isJson = true;
+    }
+    
     const container = document.getElementById('notification-previews');
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
 
     const messageDiv = document.createElement('div');
     messageDiv.className = 'notification-message';
-    messageDiv.textContent = message;
+
+    if (isJson) {
+        try {
+            const jsonObj = JSON.parse(message);
+            messageDiv.textContent = JSON.stringify(jsonObj, null, 4);
+            messageDiv.style.whiteSpace = 'pre-wrap';
+        } catch (e) {
+            messageDiv.textContent = message; // Fallback to raw text
+        }
+    } else {
+        messageDiv.textContent = message;
+    }
+
     notification.appendChild(messageDiv);
 
     if (onClick) {
@@ -382,3 +405,11 @@ if (newPanelBtn) {
 
 main();
 console.log("main() called");
+
+window.addEventListener('error', function(event) {
+    showNotification({
+        message: event.message,
+        type: 'error',
+        duration: 10000
+    });
+});
