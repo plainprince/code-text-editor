@@ -1,0 +1,28 @@
+# --- Example for run-local.js ---
+
+# 1. Print the initial global config object
+console.log("Initial config:");
+console.log(config);
+
+# 2. Use the custom native function to modify the global config
+set_config_value("editor", "MyAwesomeEditor");
+set_config_value("autosave", true);
+set_config_value("theme", "dark"); # Add a new key
+
+console.log("\nModified config:");
+console.log(config);
+
+
+# 3. Use another custom function to get data from the host environment
+platform = get_platform();
+console.warn("\nRunning on platform: \${platform}");
+
+# 4. Demonstrate that FS and Shell are enabled
+console.log("\n--- FS and Shell Test ---");
+# Use fs to list files in the current directory
+files_in_dir = fs.readdirSync("./");
+console.log("Files in current directory:", files_in_dir);
+
+# Use shell to show current path (works on unix-like systems)
+current_path = shell.execSync("pwd");
+console.log("Current path from shell:", current_path);
