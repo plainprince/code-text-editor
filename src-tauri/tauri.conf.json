@@ -43,10 +43,10 @@
       }
     },
     "shell": {
-      "open": true
+      "scope": {}
     },
     "dialog": {
-      "all": true
+      "scope": {}
     }
   }
 }

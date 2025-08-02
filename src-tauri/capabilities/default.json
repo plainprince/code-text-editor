@@ -6,18 +6,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "fs:default",
-    "fs:allow-read",
-    "fs:allow-write",
-    "fs:allow-create",
-    "fs:allow-delete",
-    "fs:allow-rename",
-    "fs:allow-copy",
-    "fs:allow-move",
-    "fs:allow-exists",
-    "fs:allow-metadata",
-    "fs:allow-read-dir",
-    "shell:default",
     "dialog:default"
   ]
 }
