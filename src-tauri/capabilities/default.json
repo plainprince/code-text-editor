@@ -6,6 +6,19 @@
   "permissions": [
     "core:default",
     "core:path:default",
-    "opener:default"
+    "opener:default",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-read",
+    "fs:allow-write",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-create-dir",
+    "fs:allow-remove-file",
+    "fs:allow-remove-dir",
+    "fs:allow-copy-file",
+    "fs:allow-exists",
+    "shell:default"
   ]
 }

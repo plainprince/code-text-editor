@@ -21,7 +21,10 @@ class FileExplorer {
   // Open a folder and load its contents
   async openFolder() {
     try {
-      const selected = await window.__TAURI__.dialog.open({
+      // Import dialog plugin dynamically
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      
+      const selected = await open({
         directory: true,
         multiple: false,
         title: "Select Project Folder"
@@ -173,8 +176,8 @@ class FileExplorer {
       const file = getFileObject(fileId);
       if (!file) return false;
       
-      const { writeTextFile } = window.__TAURI__.fs;
-      await writeTextFile(file.path, content);
+      // Use our custom writeFile function that uses core.invoke
+      await writeFile(file.path, content);
       
       // Update file in opened files
       const fileIndex = this.openedFiles.findIndex(f => f.id === fileId);

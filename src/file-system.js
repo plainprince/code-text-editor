@@ -8,7 +8,9 @@ function generateId() {
 // Read file content
 async function readFile(filePath) {
   try {
-    return await window.__TAURI__.core.invoke("get_file_content", { filePath });
+    // Use the invoke function from @tauri-apps/api/core
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke("get_file_content", { filePath });
   } catch (error) {
     console.error("Failed to read file:", error);
     throw error;
@@ -18,7 +20,9 @@ async function readFile(filePath) {
 // Write file content
 async function writeFile(filePath, content) {
   try {
-    const result = await window.__TAURI__.core.invoke("write_file", { filePath, content });
+    // Use the invoke function from @tauri-apps/api/core
+    const { invoke } = await import('@tauri-apps/api/core');
+    const result = await invoke("write_file", { filePath, content });
     return result === "OK";
   } catch (error) {
     console.error("Failed to write file:", error);
@@ -29,7 +33,9 @@ async function writeFile(filePath, content) {
 // Read directory contents
 async function readDirectory(folderPath) {
   try {
-    const message = await window.__TAURI__.core.invoke("open_folder", { folderPath });
+    // Use the invoke function from @tauri-apps/api/core
+    const { invoke } = await import('@tauri-apps/api/core');
+    const message = await invoke("open_folder", { folderPath });
     const files = JSON.parse(message.replaceAll('\\', '/').replaceAll('//', '/'));
     
     const entries = [];
