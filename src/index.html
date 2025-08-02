@@ -10,8 +10,108 @@
   <body>
     <div id="container">
       <div id="main-row">
-        <!-- Content will be added in steps -->
+        <!-- Main content -->
+        <div id="sidebar-left">
+          <div id="project-panel" class="sidebar-panel">
+            <div class="sidebar-panel-header">Project</div>
+            <div class="sidebar-panel-content"></div>
+          </div>
+          <div id="git-panel" class="sidebar-panel" style="display: none;">
+            <div class="sidebar-panel-header">Git</div>
+            <div class="sidebar-panel-content"></div>
+          </div>
+          <div id="outline-panel" class="sidebar-panel" style="display: none;">
+            <div class="sidebar-panel-header">Outline</div>
+            <div class="sidebar-panel-content"></div>
+          </div>
+          <div id="collab-panel" class="sidebar-panel" style="display: none;">
+            <div class="sidebar-panel-header">Collaboration</div>
+            <div class="sidebar-panel-content"></div>
+          </div>
+          <div id="find-in-project-panel" class="sidebar-panel" style="display: none;">
+            <div class="sidebar-panel-header">Find in Project</div>
+            <div class="sidebar-panel-content">
+              <input type="text" id="find-in-project-input" placeholder="Search...">
+              <div id="search-results"></div>
+            </div>
+          </div>
+        </div>
+        
+        <div id="main">
+          <div id="editor-toolbar">
+            <button id="open-project-button" class="toolbar-button">Open Project</button>
+            <button id="search-tool-button" class="toolbar-button">Search</button>
+            <button id="settings-tool-button" class="toolbar-button">Settings</button>
+            <span id="editor-filename"></span>
+          </div>
+          
+          <div id="editor-tabs">
+            <div id="editor-tabs-tabs-section"></div>
+          </div>
+          
+          <div id="editor">
+            <div id="welcome-screen">
+              <h1>Welcome to Code Editor</h1>
+              <p>Open a project to get started</p>
+            </div>
+          </div>
+        </div>
+        
+        <div id="sidebar-right" style="display: none;">
+          <div id="ai-panel" class="sidebar-panel">
+            <div class="sidebar-panel-header">AI Assistant</div>
+            <div class="sidebar-panel-content"></div>
+          </div>
+        </div>
+        
+        <div id="terminal" style="display: none;">
+          <div class="terminal-header">
+            <span>Terminal</span>
+            <button id="close-terminal-button">×</button>
+          </div>
+          <div class="terminal-content"></div>
+        </div>
+      </div>
+      
+      <div id="statusbar">
+        <div class="statusbar-left">
+          <button id="project-panel-button" class="statusbar-button">Project</button>
+          <button id="git-panel-button" class="statusbar-button">Git</button>
+          <button id="outline-panel-button" class="statusbar-button">Outline</button>
+          <button id="collab-panel-button" class="statusbar-button">Collab</button>
+          <button id="search-project-button" class="statusbar-button">Find</button>
+        </div>
+        <div class="statusbar-right">
+          <button id="terminal-statusbar-button" class="statusbar-button">Terminal</button>
+          <button id="ai-panel-statusbar-button" class="statusbar-button">AI</button>
+        </div>
+      </div>
+      
+      <div id="notification-previews"></div>
+      <div id="tooltip">tooltip</div>
+      <dialog id="modal">modal</dialog>
+      <div id="command-palette" class="hidden">
+        <input type="text" id="command-palette-input" placeholder="Type a command...">
+        <div id="command-palette-results"></div>
       </div>
     </div>
+    
+    <script>
+      // Make settings available globally
+      window.settings = {
+        theme: "dark",
+        fontSize: 14,
+        tabSize: 2,
+        icons: {
+          file: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
+          folder: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+          javascript: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M12 18v-6"></path><path d="M8 15h8"></path></svg>',
+          html: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>',
+          css: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M16.2 7.8l-2 8-4-2-2-4 8-2z"></path></svg>',
+          json: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"></path><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"></path></svg>',
+          markdown: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M4 12h3l2 2 2-2h3"></path></svg>'
+        }
+      };
+    </script>
   </body>
 </html>

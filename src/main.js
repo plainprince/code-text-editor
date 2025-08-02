@@ -1,8 +1,5 @@
 // Import Tauri APIs
-const { invoke } = window.__TAURI__.core;
-const { open, save } = window.__TAURI__.dialog;
-const { readTextFile, writeTextFile, readDir, createDir, removeFile } = window.__TAURI__.fs;
-const { appWindow } = window.__TAURI__.window;
+// Move API imports to where they're used to avoid initialization issues
 
 // Import our modules
 import FileExplorer from './file-explorer.js';
@@ -11,20 +8,6 @@ import Editor from './editor.js';
 // Global state
 let currentLeftPanel = "project-panel"; // Default to project panel open
 let currentRightPanel = null;
-let settings = {
-  theme: "dark",
-  fontSize: 14,
-  tabSize: 2,
-  icons: {
-    file: "📄",
-    folder: "📁",
-    javascript: "📜",
-    html: "🌐",
-    css: "🎨",
-    json: "🔧",
-    markdown: "📝"
-  }
-};
 let openedFiles = [];
 let currentFile = null;
 let fileExplorer = null;
@@ -191,6 +174,7 @@ function setupCommandPalette() {
 // File system functions
 async function openProject() {
   try {
+    const { open } = window.__TAURI__.dialog;
     const selected = await open({
       directory: true,
       multiple: false,
@@ -207,6 +191,7 @@ async function openProject() {
 
 async function loadProjectFiles(folderPath) {
   try {
+    const { readDir } = window.__TAURI__.fs;
     const entries = await readDir(folderPath, { recursive: true });
     renderFileTree(entries, document.querySelector("#project-panel .sidebar-panel-content"));
     
@@ -376,6 +361,7 @@ function getFileIcon(filename) {
 
 async function openFile(path) {
   try {
+    const { readTextFile } = window.__TAURI__.fs;
     const content = await readTextFile(path);
     const filename = path.split('/').pop();
     
@@ -527,6 +513,7 @@ async function saveCurrentFile() {
 async function loadSettings() {
   try {
     // Try to load settings from file
+    const { readTextFile } = window.__TAURI__.fs;
     const content = await readTextFile('settings.json');
     const loadedSettings = JSON.parse(content);
     settings = { ...settings, ...loadedSettings };
@@ -538,6 +525,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   try {
+    const { writeTextFile } = window.__TAURI__.fs;
     await writeTextFile('settings.json', JSON.stringify(settings, null, 2));
   } catch (err) {
     console.error("Failed to save settings:", err);
@@ -548,8 +536,10 @@ async function openSettings() {
   try {
     // Create settings file if it doesn't exist
     try {
+      const { readTextFile, writeTextFile } = window.__TAURI__.fs;
       await readTextFile('settings.json');
     } catch (err) {
+      const { writeTextFile } = window.__TAURI__.fs;
       await writeTextFile('settings.json', JSON.stringify(settings, null, 2));
     }
     
