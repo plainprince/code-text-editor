@@ -74,7 +74,14 @@ const newPanelBtn = document.getElementById("new-panel-button");
         case "find-in-project-panel":
         case "new-panel":
             const panelContent = sidebar.querySelector(`#${panel}`);
-            if(panelContent) panelContent.style.display = '';
+            if(panelContent) {
+                panelContent.style.display = '';
+                // Show Coming Soon message if panel is empty
+                const content = panelContent.querySelector('.sidebar-panel-content');
+                if (content && !content.innerHTML.trim()) {
+                    content.innerHTML = `${panel.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} (Coming Soon)`;
+                }
+            }
             break;
         default:
             sidebar.style.display = 'none';
@@ -102,6 +109,7 @@ function setRightPanel(panel) {
     // Close if already open
     sidebar.style.display = "none";
     currentRightPanel = null;
+    if (aiPanelBtn) aiPanelBtn.classList.remove("active-panel");
     return;
   }
 
@@ -110,10 +118,19 @@ function setRightPanel(panel) {
   switch (panel) {
     case "ai-panel":
       if (aiPanelBtn) aiPanelBtn.classList.add("active-panel");
-      sidebar.querySelector("#ai-panel").style.display = '';
+      const aiPanel = sidebar.querySelector("#ai-panel");
+      if (aiPanel) {
+        aiPanel.style.display = '';
+        // Show Coming Soon message if panel is empty
+        const content = aiPanel.querySelector('.sidebar-panel-content');
+        if (content && !content.innerHTML.trim()) {
+          content.innerHTML = 'AI Panel (Coming Soon)';
+        }
+      }
       break;
     default:
-      sidebar.innerHTML = "";
+      sidebar.style.display = "none";
+      currentRightPanel = null;
       break;
   }
   currentRightPanel = panel;

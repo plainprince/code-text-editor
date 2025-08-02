@@ -41,36 +41,64 @@ function showContextMenuForEntry(e, entry, fileExplorerInstance) {
 }
 
 function updateSelection(fileExplorerInstance, path, ctrlKey, shiftKey) {
-  const allItems = Array.from(document.querySelectorAll('.file-item, .folder-header'));
+  // Initialize selection arrays if they don't exist
+  if (!fileExplorerInstance.selectedItems) {
+    fileExplorerInstance.selectedItems = [];
+  }
+  if (!fileExplorerInstance.lastSelectedIndex) {
+    fileExplorerInstance.lastSelectedIndex = -1;
+  }
+
+  // Get all selectable items that are currently visible
+  const allItems = Array.from(document.querySelectorAll('.file-item:not([style*="display: none"]), .folder-header:not([style*="display: none"])'));
   const clickedIndex = allItems.findIndex(item => item.dataset.path === path);
 
+  // Handle invalid selection
+  if (clickedIndex === -1) {
+    return;
+  }
+
   if (!shiftKey) {
-    if (ctrlKey) {
-      if (fileExplorerInstance.selectedItems.includes(path)) {
-        fileExplorerInstance.selectedItems = fileExplorerInstance.selectedItems.filter(p => p !== path);
+    if (ctrlKey || e.metaKey) {
+      // Toggle selection for Ctrl/Cmd click
+      const index = fileExplorerInstance.selectedItems.indexOf(path);
+      if (index !== -1) {
+        fileExplorerInstance.selectedItems.splice(index, 1);
       } else {
         fileExplorerInstance.selectedItems.push(path);
       }
     } else {
+      // Single click selects only this item
       fileExplorerInstance.selectedItems = [path];
     }
     fileExplorerInstance.lastSelectedIndex = clickedIndex;
   } else {
+    // Shift click extends selection
     const lastIndex = fileExplorerInstance.lastSelectedIndex;
-    const start = Math.min(lastIndex, clickedIndex);
-    const end = Math.max(lastIndex, clickedIndex);
-    const selectedPaths = allItems.slice(start, end + 1).map(item => item.dataset.path);
-    if (ctrlKey) {
-      selectedPaths.forEach(p => {
-        if (!fileExplorerInstance.selectedItems.includes(p)) {
-          fileExplorerInstance.selectedItems.push(p);
-        }
-      });
+    if (lastIndex === -1) {
+      fileExplorerInstance.selectedItems = [path];
+      fileExplorerInstance.lastSelectedIndex = clickedIndex;
     } else {
-      fileExplorerInstance.selectedItems = selectedPaths;
+      const start = Math.min(lastIndex, clickedIndex);
+      const end = Math.max(lastIndex, clickedIndex);
+      const rangeItems = allItems.slice(start, end + 1);
+      
+      if (ctrlKey || e.metaKey) {
+        // Add range to existing selection
+        rangeItems.forEach(item => {
+          const itemPath = item.dataset.path;
+          if (!fileExplorerInstance.selectedItems.includes(itemPath)) {
+            fileExplorerInstance.selectedItems.push(itemPath);
+          }
+        });
+      } else {
+        // Replace selection with range
+        fileExplorerInstance.selectedItems = rangeItems.map(item => item.dataset.path);
+      }
     }
   }
 
+  // Update UI to reflect selection state
   allItems.forEach(item => {
     if (fileExplorerInstance.selectedItems.includes(item.dataset.path)) {
       item.classList.add('selected');
@@ -158,14 +186,12 @@ function createFolderDiv(
         </div>
     `;
   // Toggle open/close on header click
-headerDiv.addEventListener("click", (e) => {
+  headerDiv.addEventListener("click", (e) => {
     if (e.detail === 1) { // single click
-        updateSelection(fileExplorerInstance, headerDiv.dataset.path, e.ctrlKey || e.metaKey, e.shiftKey);
+      updateSelection(fileExplorerInstance, headerDiv.dataset.path, e.ctrlKey || e.metaKey, e.shiftKey);
+      fileExplorerInstance.toggleFolder(folderPath);
     }
-});
-headerDiv.addEventListener("dblclick", (e) => {
-    fileExplorerInstance.toggleFolder(folderPath);
-});
+  });
   // Right-click context menu for folders
   headerDiv.addEventListener("contextmenu", (e) => {
     showContextMenuForEntry(e, entry, fileExplorerInstance);

@@ -123,12 +123,15 @@ export function getContextMenuItems(context) {
     action: (ctx) => window.fileExplorer.copyItem(ctx.path),
   });
 
-  if (window.fileExplorer.clipboard) {
-    items.push({
-      label: "Paste",
-      action: (ctx) => window.fileExplorer.pasteItem(ctx.path),
-    });
-  }
+  items.push({
+    label: "Paste",
+    action: (ctx) => {
+      if (window.fileExplorer.clipboard) {
+        window.fileExplorer.pasteItem(ctx.path);
+      }
+    },
+    disabled: !window.fileExplorer.clipboard,
+  });
 
   items.push({
     label: "Duplicate",

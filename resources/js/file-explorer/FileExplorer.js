@@ -28,11 +28,12 @@ export default class FileExplorer {
     this.clipboardType = null; // 'copy' or 'cut'
     this.searchResults = [];
     this.config = {};
-    this.selectedItem = null;
     this.selectedItems = [];
+    this.lastSelectedIndex = -1;
     this.contextMenuOpen = false;
     this.tooltipTimer = null;
     this.tooltipActive = false;
+    this._openFolders = {};
     
     // History
     this.history = new ExplorerHistory(this);
@@ -173,8 +174,16 @@ export default class FileExplorer {
   }
 
   // Utility
-  showNotification(message, type, isJson = false) {
-    showNotification({ message, type, isJson });
+  showNotification(options) {
+    if (typeof options === 'string') {
+      options = { message: options };
+    } else if (typeof options === 'object' && options !== null) {
+      // If the message is an object, mark it as JSON
+      if (typeof options.message === 'object' && options.message !== null) {
+        options.isJson = true;
+      }
+    }
+    showNotification(options);
   }
 
   // Add a root folder and refresh the explorer
@@ -232,6 +241,9 @@ export default class FileExplorer {
       const result = await Neutralino.filesystem.readDirectory(path);
 
       for (const e of result) {
+        // Skip .DS_Store files
+        if (e.entry === '.DS_Store') continue;
+
         const entryPath = `${path}/${e.entry}`;
         const entry = {
           name: e.entry,

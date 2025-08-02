@@ -46,7 +46,7 @@ export default class ExplorerActions {
         const dest = `${src.substring(0, src.lastIndexOf('/'))}/${newName}`;
 
         try {
-            await Neutralino.filesystem.moveFile(src, dest);
+            await Neutralino.filesystem.move(src, dest);
             this.fileExplorer.history.addAction({ type: 'rename', from: src, to: dest });
             this.fileExplorer.loadCurrentDirectory();
         } catch (e) {
@@ -64,7 +64,7 @@ export default class ExplorerActions {
             }
             
             const dest = `${trashPath}/${path.split('/').pop()}`;
-            await Neutralino.filesystem.moveFile(path, dest);
+            await Neutralino.filesystem.move(path, dest);
             this.fileExplorer.history.addAction({ type: 'trash', path: path, trashPath: dest });
             this.fileExplorer.loadCurrentDirectory();
         } catch (e) {

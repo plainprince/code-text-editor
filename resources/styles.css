@@ -410,6 +410,11 @@ body {
     color: white;
 }
 
+.folder-header.selected {
+  background: var(--file-explorer-selected, #007acc) !important;
+  color: #fff !important;
+}
+
 .file-icon {
     margin-right: 8px;
     font-size: 16px;
@@ -929,4 +934,20 @@ body {
   text-overflow: ellipsis;
   white-space: normal;
   word-wrap: break-word;
+}
+
+#modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  pointer-events: none;
+  background: transparent;
+}
+#modal:empty {
+  display: none;
+}
+#modal[style*="display: block"] {
+  pointer-events: auto;
 }

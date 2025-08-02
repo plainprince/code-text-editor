@@ -48,6 +48,12 @@ class Settings {
           `[Settings] Failed to create settings directory at ${appDataPath}`,
           e2,
         );
+        if (window.fileExplorer && typeof window.fileExplorer.showNotification === 'function') {
+          window.fileExplorer.showNotification({
+            message: `Unable to create settings directory: ${appDataPath}. Settings will not be saved.`,
+            type: 'error',
+          });
+        }
         // Still continue, in case directory now exists or error is non-fatal
       }
     }
@@ -138,12 +144,29 @@ class Settings {
   async save() {
     if (!this.settingsPath) return;
     try {
+      // Ensure parent directory exists
+      const parentDir = this.settingsPath.substring(0, this.settingsPath.lastIndexOf('/'));
+      try {
+        await Neutralino.filesystem.readDirectory(parentDir);
+      } catch (dirErr) {
+        await Neutralino.filesystem.createDirectory(parentDir);
+      }
+
+      // Write settings with proper error handling
       await Neutralino.filesystem.writeFile(
         this.settingsPath,
         JSON.stringify(this.settings, null, 4),
       );
+      console.log("[Settings] Successfully saved settings to:", this.settingsPath);
     } catch (e) {
-      console.error("Error saving settings:", e);
+      console.error("[Settings] Error saving settings:", e);
+      if (window.fileExplorer && typeof window.fileExplorer.showNotification === 'function') {
+        window.fileExplorer.showNotification({
+          message: `Error saving settings: ${e.message || e}`,
+          type: 'error',
+        });
+      }
+      throw e; // Re-throw to allow caller to handle
     }
   }
 

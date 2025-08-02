@@ -114,7 +114,14 @@ export function setupExplorerDnD(fileExplorer) {
 
         for (const srcPath of dragData.items) {
             if (srcPath !== destPath) {
-                fileExplorer.moveItem(srcPath, destPath);
+                let finalDest = destPath;
+                // If drop target is a directory, append the filename
+                const isDir = dropTarget.classList.contains('folder-header');
+                if (isDir) {
+                    const fileName = srcPath.substring(srcPath.lastIndexOf('/') + 1);
+                    finalDest = destPath + '/' + fileName;
+                }
+                fileExplorer.moveItem(srcPath, finalDest);
             }
         }
         
