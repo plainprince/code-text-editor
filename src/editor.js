@@ -1,5 +1,4 @@
-// editor.js
-// Simple code editor implementation
+// editor.js - Handles code editor functionality
 
 class Editor {
   constructor(container) {
@@ -178,5 +177,4 @@ class Editor {
   }
 }
 
-// Export the Editor class
 export default Editor;

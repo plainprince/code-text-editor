@@ -1,14 +1,15 @@
 {
   "name": "code-editor",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
-    "tauri": "tauri"
+    "dev": "echo 'Starting development server...'",
+    "build": "echo 'Building...'",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.7.1"
+    "@tauri-apps/cli": "^1.5.0"
   }
 }
