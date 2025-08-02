@@ -1,9 +1,6 @@
 // file-explorer.js
 // Handles file system operations and UI for the file explorer
 
-const { readDir, readTextFile, writeTextFile, createDir, removeFile } = window.__TAURI__.fs;
-const { open, save, message } = window.__TAURI__.dialog;
-
 class FileExplorer {
   constructor() {
     this.rootFolder = null;
@@ -27,6 +24,7 @@ class FileExplorer {
   // Open a folder and load its contents
   async openFolder() {
     try {
+      const { open } = window.__TAURI__.dialog;
       const selected = await open({
         directory: true,
         multiple: false,
@@ -51,6 +49,7 @@ class FileExplorer {
     if (!this.rootFolder) return;
     
     try {
+      const { readDir } = window.__TAURI__.fs;
       const entries = await readDir(this.rootFolder, { recursive: true });
       this.fileTree = entries;
       this.renderFileTree(entries, this.container);
@@ -178,6 +177,7 @@ class FileExplorer {
   // Open a file and load its contents
   async openFile(path) {
     try {
+      const { readTextFile } = window.__TAURI__.fs;
       const content = await readTextFile(path);
       const filename = path.split('/').pop();
       
@@ -216,6 +216,7 @@ class FileExplorer {
   // Save a file
   async saveFile(path, content) {
     try {
+      const { writeTextFile } = window.__TAURI__.fs;
       await writeTextFile(path, content);
       
       // Update file in opened files
@@ -234,6 +235,8 @@ class FileExplorer {
   // Create a new file
   async createNewFile(folderPath) {
     try {
+      const { message } = window.__TAURI__.dialog;
+      const { writeTextFile } = window.__TAURI__.fs;
       const result = await message("Enter file name:", { title: "New File", type: "info" });
       
       if (result) {
@@ -252,6 +255,8 @@ class FileExplorer {
   // Create a new folder
   async createNewFolder(folderPath) {
     try {
+      const { message } = window.__TAURI__.dialog;
+      const { createDir } = window.__TAURI__.fs;
       const result = await message("Enter folder name:", { title: "New Folder", type: "info" });
       
       if (result) {
@@ -270,6 +275,8 @@ class FileExplorer {
   // Delete a file or folder
   async deleteItem(path) {
     try {
+      const { message } = window.__TAURI__.dialog;
+      const { removeFile } = window.__TAURI__.fs;
       const confirmed = await message("Are you sure you want to delete this item?", {
         title: "Delete",
         type: "warning",
