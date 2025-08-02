@@ -36,17 +36,11 @@
     ]
   },
   "plugins": {
-    "fs": {
-      "scope": {
-        "allow": ["**"],
-        "deny": []
-      }
-    },
     "shell": {
-      "scope": {}
+      "open": true
     },
     "dialog": {
-      "scope": {}
+      "all": true
     }
   }
 }
