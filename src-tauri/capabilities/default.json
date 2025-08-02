@@ -7,9 +7,6 @@
     "core:default",
     "core:path:default",
     "opener:default",
-    "shell:allow-open",
-    "fs:allow-read",
-    "fs:allow-write",
-    "fs:allow-read-dir"
+    "opener:allow-open-path"
   ]
 }
