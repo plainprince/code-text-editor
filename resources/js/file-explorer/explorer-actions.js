@@ -172,31 +172,53 @@ export default class ExplorerActions {
     }
 
     cutItem(path) {
-        this.fileExplorer.clipboard = path;
+        // If path is not in selectedItems, select only this item
+        if (!this.fileExplorer.selectedItems.has(path)) {
+            this.fileExplorer.selectedItems.clear();
+            this.fileExplorer.selectedItems.add(path);
+        }
+        
+        // Store all selected items in clipboard
+        this.fileExplorer.clipboard = Array.from(this.fileExplorer.selectedItems);
         this.fileExplorer.clipboardType = 'cut';
-        this.fileExplorer.showNotification({ message: `Cut: ${path.split('/').pop()}`, type: 'info' });
+        
+        const count = this.fileExplorer.clipboard.length;
+        const message = count === 1 
+            ? `Cut: ${path.split('/').pop()}`
+            : `Cut ${count} items`;
+        this.fileExplorer.showNotification({ message, type: 'info' });
         this.fileExplorer.loadCurrentDirectory(); // To update context menu
     }
 
     copyItem(path) {
-        this.fileExplorer.clipboard = path;
+        // If path is not in selectedItems, select only this item
+        if (!this.fileExplorer.selectedItems.has(path)) {
+            this.fileExplorer.selectedItems.clear();
+            this.fileExplorer.selectedItems.add(path);
+        }
+        
+        // Store all selected items in clipboard
+        this.fileExplorer.clipboard = Array.from(this.fileExplorer.selectedItems);
         this.fileExplorer.clipboardType = 'copy';
-        this.fileExplorer.showNotification({ message: `Copied: ${path.split('/').pop()}`, type: 'info' });
+        
+        const count = this.fileExplorer.clipboard.length;
+        const message = count === 1 
+            ? `Copied: ${path.split('/').pop()}`
+            : `Copied ${count} items`;
+        this.fileExplorer.showNotification({ message, type: 'info' });
         this.fileExplorer.loadCurrentDirectory(); // To update context menu
     }
 
     async pasteItem(destPath) {
-        const src = this.fileExplorer.clipboard;
+        const sources = this.fileExplorer.clipboard;
         const type = this.fileExplorer.clipboardType;
 
-        if (!src) {
+        if (!sources || !Array.isArray(sources) || sources.length === 0) {
             this.fileExplorer.showNotification({ message: 'Clipboard is empty.', type: 'warning' });
             return;
         }
 
-        const fileName = src.substring(src.lastIndexOf('/') + 1);
         let targetDir;
-
         try {
             const stats = await Neutralino.filesystem.getStats(destPath);
             targetDir = stats.isDirectory ? destPath : destPath.substring(0, destPath.lastIndexOf('/'));
@@ -205,27 +227,56 @@ export default class ExplorerActions {
             return;
         }
 
-        const finalDestPath = `${targetDir}/${fileName}`;
+        let successCount = 0;
+        let errorCount = 0;
 
-        if (src === finalDestPath) {
-            return;
-        }
+        for (const src of sources) {
+            const fileName = src.substring(src.lastIndexOf('/') + 1);
+            const finalDestPath = `${targetDir}/${fileName}`;
 
-        try {
-            if (type === 'copy') {
-                await Neutralino.filesystem.copy(src, finalDestPath);
-                this.fileExplorer.history.addAction({ type: 'create', path: finalDestPath });
-                this.fileExplorer.showNotification({ message: `Pasted: ${finalDestPath}` });
-            } else if (type === 'cut') {
-                await Neutralino.filesystem.move(src, finalDestPath);
-                this.fileExplorer.history.addAction({ type: 'move', from: src, to: finalDestPath });
-                this.fileExplorer.showNotification({ message: `Moved: ${finalDestPath}` });
-                this.fileExplorer.clipboard = null;
-                this.fileExplorer.clipboardType = null;
+            if (src === finalDestPath) {
+                continue;
             }
-            await this.fileExplorer.loadCurrentDirectory();
-        } catch (e) {
-            this.fileExplorer.showNotification({ message: `Paste error: ${e.message}`, type: 'error' });
+
+            try {
+                if (type === 'copy') {
+                    await Neutralino.filesystem.copy(src, finalDestPath);
+                    this.fileExplorer.history.addAction({ type: 'create', path: finalDestPath });
+                    successCount++;
+                } else if (type === 'cut') {
+                    await Neutralino.filesystem.move(src, finalDestPath);
+                    this.fileExplorer.history.addAction({ type: 'move', from: src, to: finalDestPath });
+                    successCount++;
+                }
+            } catch (e) {
+                console.error(`Error processing ${src}:`, e);
+                errorCount++;
+            }
         }
+
+        // Clear clipboard after cut operation
+        if (type === 'cut' && successCount > 0) {
+            this.fileExplorer.clipboard = null;
+            this.fileExplorer.clipboardType = null;
+        }
+
+        // Show summary notification
+        const totalCount = sources.length;
+        let message = '';
+        if (errorCount === 0) {
+            message = totalCount === 1 
+                ? `Successfully ${type === 'cut' ? 'moved' : 'copied'} 1 item`
+                : `Successfully ${type === 'cut' ? 'moved' : 'copied'} ${totalCount} items`;
+        } else if (successCount === 0) {
+            message = `Failed to ${type === 'cut' ? 'move' : 'copy'} any items`;
+        } else {
+            message = `Processed ${successCount} of ${totalCount} items (${errorCount} failed)`;
+        }
+        this.fileExplorer.showNotification({ 
+            message,
+            type: errorCount > 0 ? 'warning' : 'info'
+        });
+
+        await this.fileExplorer.loadCurrentDirectory();
     }
 }

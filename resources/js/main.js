@@ -78,8 +78,11 @@ const newPanelBtn = document.getElementById("new-panel-button");
                 panelContent.style.display = '';
                 // Show Coming Soon message if panel is empty
                 const content = panelContent.querySelector('.sidebar-panel-content');
-                if (content && !content.innerHTML.trim()) {
-                    content.innerHTML = `${panel.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} (Coming Soon)`;
+                if (content) {
+                    content.style.display = '';
+                    if (!content.innerHTML.trim() || content.innerHTML.trim() === panel) {
+                        content.innerHTML = `${panel.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} (Coming Soon)`;
+                    }
                 }
             }
             break;
@@ -88,6 +91,20 @@ const newPanelBtn = document.getElementById("new-panel-button");
             currentLeftPanel = null;
             break;
     }
+    
+    // Update button states
+    Object.entries(panelMap).forEach(([key, btn]) => {
+        if (btn) {
+            if (key === panel) {
+                btn.classList.add("active-panel");
+                // Show tooltip on hover
+                btn.title = key === "project-panel" ? "Project Explorer" : 
+                           `${key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} (Coming Soon)`;
+            } else {
+                btn.classList.remove("active-panel");
+            }
+        }
+    });
 }
 
 let currentRightPanel = null;
@@ -98,7 +115,10 @@ function setRightPanel(panel) {
 
   // Remove highlight from all
   [aiPanelBtn].forEach((btn) => {
-    if (btn) btn.classList.remove("active-panel");
+    if (btn) {
+      btn.classList.remove("active-panel");
+      btn.title = "AI Panel (Coming Soon)";
+    }
   });
 
   // Hide all panels
@@ -117,14 +137,22 @@ function setRightPanel(panel) {
   sidebar.style.display = "";
   switch (panel) {
     case "ai-panel":
-      if (aiPanelBtn) aiPanelBtn.classList.add("active-panel");
+      if (aiPanelBtn) {
+        aiPanelBtn.classList.add("active-panel");
+        aiPanelBtn.title = "AI Panel (Coming Soon)";
+      }
       const aiPanel = sidebar.querySelector("#ai-panel");
       if (aiPanel) {
         aiPanel.style.display = '';
         // Show Coming Soon message if panel is empty
         const content = aiPanel.querySelector('.sidebar-panel-content');
-        if (content && !content.innerHTML.trim()) {
+        if (content) {
+          content.style.display = '';
           content.innerHTML = 'AI Panel (Coming Soon)';
+          content.style.padding = '20px';
+          content.style.textAlign = 'center';
+          content.style.color = '#888aad';
+          content.style.fontSize = '14px';
         }
       }
       break;
@@ -235,17 +263,15 @@ window.openProject = async function openProject() {
         window.fileExplorer &&
         typeof window.fileExplorer.addRootFolder === "function"
       ) {
-        window.fileExplorer.addRootFolder(folder);
         document.getElementById("welcome-screen").style.display = "none";
-        // Directly call setLeftPanel to ensure the panel is open and highlighted
-        setLeftPanel("project-panel");
+        await window.fileExplorer.addRootFolder(folder);
       } else if (retries > 0) {
         setTimeout(() => tryAddRootFolder(retries - 1), 100);
       } else {
         console.error("FileExplorer not ready after waiting.");
       }
     }
-    tryAddRootFolder();
+    await tryAddRootFolder();
   } else {
     console.log("No folder selected");
   }

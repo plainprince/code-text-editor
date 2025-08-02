@@ -183,7 +183,7 @@ body {
 /* #statusbar styles moved to above for clarity and improved stacking */
 
 #sidebar-left-statusbar,
-#right {
+#sidebar-right-statusbar {
     display: flex;
     align-items: center;
     height: 100%;
@@ -192,7 +192,8 @@ body {
     flex: 0 0 auto;
 }
 
-#sidebar-left-statusbar span.active-panel svg {
+#sidebar-left-statusbar span.active-panel svg,
+#sidebar-right-statusbar span.active-panel svg {
     color: var(--sidebar-active-icon, #007acc);
     stroke: var(--sidebar-active-icon, #007acc);
     fill: none;
@@ -203,14 +204,15 @@ body {
     margin-left: 0;
     margin-right: 0;
 }
-#right {
+
+#sidebar-right-statusbar {
     justify-content: flex-end;
     margin-left: auto;
     margin-right: 12px;
 }
 
 #sidebar-left-statusbar > span,
-#right > span {
+#sidebar-right-statusbar > span {
     margin: 0;
     cursor: pointer;
     height: 100%;
@@ -218,6 +220,12 @@ body {
     align-items: center;
     white-space: nowrap;
     min-width: 0;
+    transition: color 0.15s ease-in-out;
+}
+
+#sidebar-left-statusbar > span:hover,
+#sidebar-right-statusbar > span:hover {
+    color: var(--sidebar-active-icon, #007acc);
 }
 #project-panel-button {
     margin-left: 0;
@@ -394,10 +402,12 @@ body {
     min-height: 0;
     height: 20px;
     line-height: 1;
-    user-select: auto;
-    -webkit-user-select: auto;
-    -moz-user-select: auto;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
     transition: background-color 0.1s ease-in-out;
+    position: relative;
+    z-index: 1;
 }
 
 #sidebar-left .file-item:hover,
@@ -482,13 +492,15 @@ body {
 }
 
 .context-menu {
-    background: var(--file-explorer-bg);
-    border: 1px solid var(--file-explorer-border);
+    background: var(--context-menu-bg, var(--file-explorer-bg));
+    border: 1px solid var(--context-menu-border, var(--file-explorer-border));
     border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     min-width: 200px;
     font-family: var(--file-explorer-font-family);
     font-size: var(--file-explorer-font-size);
+    padding: 4px 0;
+    z-index: 1000;
 }
 
 .menu-item {
@@ -498,22 +510,25 @@ body {
     padding: 8px 12px;
     cursor: pointer;
     font-size: var(--file-explorer-font-size);
-    color: var(--file-explorer-text);
+    color: var(--context-menu-text, var(--file-explorer-text));
+    transition: background-color 0.1s ease-in-out;
 }
 
 .menu-item:hover {
-    background: var(--file-explorer-hover);
+    background: var(--context-menu-hover, var(--file-explorer-hover));
 }
 
 .menu-separator {
     height: 1px;
-    background: var(--file-explorer-border);
-    margin: 2px 0;
+    background: var(--context-menu-border, var(--file-explorer-border));
+    margin: 4px 0;
 }
 
 .menu-shortcut {
     font-size: 11px;
-    color: #999;
+    color: var(--context-menu-shortcut, #999);
+    margin-left: 16px;
+    opacity: 0.8;
 }
 
 #tooltip {
@@ -808,21 +823,67 @@ body {
     align-items: center;
     cursor: pointer;
     padding: 0 2px;
-    user-select: auto;
-    -webkit-user-select: auto;
-    -moz-user-select: auto;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
     background: transparent;
     border-bottom: 1px solid transparent;
     min-height: 0;
     height: 20px;
     line-height: 1;
     transition: background-color 0.1s ease-in-out;
+    position: relative;
+    z-index: 1;
 }
 
 /* This rule is no longer necessary, it is combined with .file-item:hover */
 
 .folder-caret {
     display: none;
+}
+
+.root-folder {
+    margin-bottom: 16px;
+    position: relative;
+    background: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+}
+
+.root-folder-header {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: var(--file-explorer-sidebar);
+    border-bottom: 1px solid var(--file-explorer-border);
+    margin-bottom: 4px;
+    font-weight: bold;
+    position: relative;
+}
+
+.root-folder-header .file-name {
+    flex: 1;
+    margin-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.root-folder-close {
+    background: none;
+    border: none;
+    color: var(--file-explorer-text);
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0 4px;
+    margin-left: 8px;
+    transition: opacity 0.2s;
+}
+
+.root-folder-close:hover {
+    opacity: 1;
 }
 
 .file-folder {

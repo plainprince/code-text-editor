@@ -2,8 +2,8 @@
   "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
   "applicationId": "js.neutralino.sample",
   "version": "1.0.0",
-  "defaultMode": "window",
-  "port": 0,
+  "defaultMode": "browser",
+  "port": 5006,
   "documentRoot": "/resources/",
   "url": "/",
   "enableServer": true,
@@ -13,7 +13,7 @@
     "enabled": true,
     "writeToLogFile": true
   },
-  "nativeAllowList": ["app.*", "os.*", "debug.log", "filesystem.*"],
+  "nativeAllowList": ["app.*", "os.*", "debug.log", "filesystem.*", "os.execCommand"],
   "globalVariables": {
     "TEST1": "Hello",
     "TEST2": [2, 4, 5],

@@ -26,6 +26,79 @@ class CommandPalette {
           Neutralino.os.open(window.settings.settingsPath);
         },
       },
+      // File operations
+      {
+        name: "New File",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.createNewFile(path);
+          }
+        },
+      },
+      {
+        name: "New Folder",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.createNewFolder(path);
+          }
+        },
+      },
+      {
+        name: "Copy",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.copyItem(path);
+          }
+        },
+      },
+      {
+        name: "Cut",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.cutItem(path);
+          }
+        },
+      },
+      {
+        name: "Paste",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.pasteItem(path);
+          }
+        },
+      },
+      {
+        name: "Rename",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.renameItem(path);
+          }
+        },
+      },
+      {
+        name: "Delete",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.deleteItem(path);
+          }
+        },
+      },
+      {
+        name: "Move to Trash",
+        action: () => {
+          if (window.fileExplorer && window.fileExplorer.selectedItems.length > 0) {
+            const path = window.fileExplorer.selectedItems[0];
+            window.fileExplorer.actions.trashItem(path);
+          }
+        },
+      },
     ];
   }
 

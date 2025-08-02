@@ -6,7 +6,7 @@
  * and handling UI-specific updates.
  */
 
-function createFileIcon(entry, config, isOpen = false) {
+export function createFileIcon(entry, config, isOpen = false) {
   // Use SVG icons from config
   if (!config || !config.icons) return "";
   if (entry.type === "DIRECTORY") {
@@ -40,17 +40,9 @@ function showContextMenuForEntry(e, entry, fileExplorerInstance) {
   }
 }
 
-function updateSelection(fileExplorerInstance, path, ctrlKey, shiftKey) {
-  // Initialize selection arrays if they don't exist
-  if (!fileExplorerInstance.selectedItems) {
-    fileExplorerInstance.selectedItems = [];
-  }
-  if (!fileExplorerInstance.lastSelectedIndex) {
-    fileExplorerInstance.lastSelectedIndex = -1;
-  }
-
+export function updateSelection(fileExplorerInstance, path, ctrlKey, shiftKey, metaKey) {
   // Get all selectable items that are currently visible
-  const allItems = Array.from(document.querySelectorAll('.file-item:not([style*="display: none"]), .folder-header:not([style*="display: none"])'));
+  const allItems = Array.from(document.querySelectorAll('.file-item:not([style*="display: none"]), .folder-header:not([style*="display: none"]), .folder-content .file-item:not([style*="display: none"])'));
   const clickedIndex = allItems.findIndex(item => item.dataset.path === path);
 
   // Handle invalid selection
@@ -58,49 +50,49 @@ function updateSelection(fileExplorerInstance, path, ctrlKey, shiftKey) {
     return;
   }
 
+  // Handle selection based on modifier keys
   if (!shiftKey) {
-    if (ctrlKey || e.metaKey) {
+    if (ctrlKey || metaKey) {
       // Toggle selection for Ctrl/Cmd click
-      const index = fileExplorerInstance.selectedItems.indexOf(path);
-      if (index !== -1) {
-        fileExplorerInstance.selectedItems.splice(index, 1);
+      if (fileExplorerInstance.selectedItems.has(path)) {
+        fileExplorerInstance.selectedItems.delete(path);
       } else {
-        fileExplorerInstance.selectedItems.push(path);
+        fileExplorerInstance.selectedItems.add(path);
       }
+      fileExplorerInstance._selectionAnchor = path;
     } else {
       // Single click selects only this item
-      fileExplorerInstance.selectedItems = [path];
+      fileExplorerInstance.selectedItems.clear();
+      fileExplorerInstance.selectedItems.add(path);
+      fileExplorerInstance._selectionAnchor = path;
     }
-    fileExplorerInstance.lastSelectedIndex = clickedIndex;
   } else {
     // Shift click extends selection
-    const lastIndex = fileExplorerInstance.lastSelectedIndex;
-    if (lastIndex === -1) {
-      fileExplorerInstance.selectedItems = [path];
-      fileExplorerInstance.lastSelectedIndex = clickedIndex;
+    if (!fileExplorerInstance._selectionAnchor) {
+      fileExplorerInstance.selectedItems.clear();
+      fileExplorerInstance.selectedItems.add(path);
+      fileExplorerInstance._selectionAnchor = path;
     } else {
-      const start = Math.min(lastIndex, clickedIndex);
-      const end = Math.max(lastIndex, clickedIndex);
-      const rangeItems = allItems.slice(start, end + 1);
-      
-      if (ctrlKey || e.metaKey) {
-        // Add range to existing selection
+      const anchorIndex = allItems.findIndex(item => item.dataset.path === fileExplorerInstance._selectionAnchor);
+      if (anchorIndex !== -1) {
+        const start = Math.min(anchorIndex, clickedIndex);
+        const end = Math.max(anchorIndex, clickedIndex);
+        const rangeItems = allItems.slice(start, end + 1);
+        
+        if (!ctrlKey && !metaKey) {
+          fileExplorerInstance.selectedItems.clear();
+        }
+        
         rangeItems.forEach(item => {
-          const itemPath = item.dataset.path;
-          if (!fileExplorerInstance.selectedItems.includes(itemPath)) {
-            fileExplorerInstance.selectedItems.push(itemPath);
-          }
+          fileExplorerInstance.selectedItems.add(item.dataset.path);
         });
-      } else {
-        // Replace selection with range
-        fileExplorerInstance.selectedItems = rangeItems.map(item => item.dataset.path);
       }
     }
   }
 
   // Update UI to reflect selection state
   allItems.forEach(item => {
-    if (fileExplorerInstance.selectedItems.includes(item.dataset.path)) {
+    if (fileExplorerInstance.selectedItems.has(item.dataset.path)) {
       item.classList.add('selected');
     } else {
       item.classList.remove('selected');
@@ -108,7 +100,12 @@ function updateSelection(fileExplorerInstance, path, ctrlKey, shiftKey) {
   });
 }
 
-function createFileItem(entry, parentPath, fileExplorerInstance, config) {
+export async function createFileItem(entry, parentPath, fileExplorerInstance, config) {
+    if (!entry || !entry.name) {
+        console.error("Invalid entry provided to createFileItem:", entry);
+        return null;
+    }
+
     const item = document.createElement("div");
     item.className = "file-item";
     item.draggable = true;
@@ -121,19 +118,19 @@ function createFileItem(entry, parentPath, fileExplorerInstance, config) {
             <p style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${entry.name}</p>
         </div>
     `;
+    
     // Click to select/open
     item.addEventListener("click", (e) => {
-        updateSelection(fileExplorerInstance, item.dataset.path, e.ctrlKey || e.metaKey, e.shiftKey);
+        updateSelection(fileExplorerInstance, item.dataset.path, e.ctrlKey, e.shiftKey, e.metaKey);
     });
+    
     // Double click to open
     item.addEventListener("dblclick", (e) => {
-        if (
-            fileExplorerInstance &&
-            typeof fileExplorerInstance.openFileInEditor === "function"
-        ) {
-            fileExplorerInstance.openFileInEditor(item.dataset.path);
+        if (fileExplorerInstance && typeof fileExplorerInstance.openFile === "function") {
+            fileExplorerInstance.openFile(item.dataset.path);
         }
     });
+    
     // Right-click context menu
     item.addEventListener("contextmenu", (e) => {
         showContextMenuForEntry(e, entry, fileExplorerInstance);
@@ -150,7 +147,7 @@ function createFileItem(entry, parentPath, fileExplorerInstance, config) {
     return item;
 }
 
-function createFolderDiv(
+export async function createFolderDiv(
   entry,
   parentPath,
   fileExplorerInstance,
@@ -158,8 +155,13 @@ function createFolderDiv(
   isRoot = false,
   open = false,
 ) {
+  if (!entry || !entry.name) {
+    console.error("Invalid entry provided to createFolderDiv:", entry);
+    return null;
+  }
+
   const folderDiv = document.createElement("div");
-  folderDiv.className = "file-folder";
+  folderDiv.className = isRoot ? "root-folder" : "file-folder";
   folderDiv.draggable = true;
   const folderPath = isRoot
     ? entry.fullPath || entry.name
@@ -177,7 +179,7 @@ function createFolderDiv(
 
   // Folder header
   const headerDiv = document.createElement("div");
-  headerDiv.className = "folder-header";
+  headerDiv.className = isRoot ? "root-folder-header" : "folder-header";
   headerDiv.dataset.path = folderPath;
   headerDiv.innerHTML = `
         ${createFileIcon(entry, config, fileExplorerInstance._openFolders[folderPath])}
@@ -185,55 +187,94 @@ function createFolderDiv(
             <p style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${entry.name}</p>
         </div>
     `;
+
+  // Add close button for root folders
+  if (isRoot) {
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'root-folder-close';
+    closeBtn.innerHTML = '×';
+    closeBtn.title = 'Remove from workspace';
+    closeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const index = fileExplorerInstance.rootFolders.indexOf(folderPath);
+      if (index !== -1) {
+        fileExplorerInstance.rootFolders.splice(index, 1);
+        folderDiv.remove();
+        await fileExplorerInstance.saveWorkspaceState();
+      }
+    });
+    headerDiv.appendChild(closeBtn);
+  }
+
   // Toggle open/close on header click
   headerDiv.addEventListener("click", (e) => {
     if (e.detail === 1) { // single click
-      updateSelection(fileExplorerInstance, headerDiv.dataset.path, e.ctrlKey || e.metaKey, e.shiftKey);
-      fileExplorerInstance.toggleFolder(folderPath);
+      updateSelection(fileExplorerInstance, headerDiv.dataset.path, e.ctrlKey, e.shiftKey, e.metaKey);
+      // Use setTimeout to allow the selection to complete first
+      setTimeout(() => {
+        fileExplorerInstance.toggleFolder(folderPath);
+      }, 0);
+      e.stopPropagation(); // Prevent event bubbling
     }
   });
+
   // Right-click context menu for folders
   headerDiv.addEventListener("contextmenu", (e) => {
     showContextMenuForEntry(e, entry, fileExplorerInstance);
   });
 
-    headerDiv.addEventListener('mouseenter', (e) => {
-        fileExplorerInstance.startTooltipTimer(e, headerDiv.dataset.path);
-    });
+  headerDiv.addEventListener('mouseenter', (e) => {
+    fileExplorerInstance.startTooltipTimer(e, headerDiv.dataset.path);
+  });
 
-    headerDiv.addEventListener('mouseleave', () => {
-        fileExplorerInstance.clearTooltipTimer();
-    });
+  headerDiv.addEventListener('mouseleave', () => {
+    fileExplorerInstance.clearTooltipTimer();
+  });
 
   folderDiv.appendChild(headerDiv);
 
-  // Children (recursive, only if open)
-  if (
-    fileExplorerInstance._openFolders[folderPath] &&
-    entry.entries &&
-    Array.isArray(entry.entries)
-  ) {
-    const childrenDiv = document.createElement("div");
-    childrenDiv.className = "folder-content";
-    // Sort: folders first, then files, both alphabetically
-    const sortedEntries = [...entry.entries].sort((a, b) => {
-      if (a.type === "DIRECTORY" && b.type !== "DIRECTORY") return -1;
-      if (a.type !== "DIRECTORY" && b.type === "DIRECTORY") return 1;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    });
-  for (const entry of sortedEntries) {
-    if (entry.type === 'DIRECTORY') {
-      childrenDiv.appendChild(createFolderDiv(entry, folderPath, fileExplorerInstance, config));
-    } else {
-      childrenDiv.appendChild(createFileItem(entry, folderPath, fileExplorerInstance, config));
-    }
-  }
+  // Create an empty content div for all folders
+  // This will be populated when the folder is opened
+  const childrenDiv = document.createElement("div");
+  childrenDiv.className = "folder-content";
+  
+  // Set initial display style based on open state
+  childrenDiv.style.display = fileExplorerInstance._openFolders[folderPath] ? '' : 'none';
+  
+  // Add the content div to the folder
   folderDiv.appendChild(childrenDiv);
+  
+  // If the folder is open and has pre-loaded entries, show them
+  if (fileExplorerInstance._openFolders[folderPath] && Array.isArray(entry.entries) && entry.entries.length > 0) {
+    try {
+      // Process each entry to ensure it has a name
+      const processedEntries = entry.entries.map(childEntry => ({
+        ...childEntry,
+        name: childEntry.name || childEntry.entry
+      }));
+      
+      // Create child elements for files only (folders will be loaded when clicked)
+      for (const childEntry of processedEntries) {
+        if (childEntry.type !== 'DIRECTORY') {
+          const childPath = `${folderPath}/${childEntry.name}`;
+          const fileElement = await createFileItem({ 
+            ...childEntry, 
+            fullPath: childPath 
+          }, folderPath, fileExplorerInstance, config);
+          
+          if (fileElement) {
+            childrenDiv.appendChild(fileElement);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error creating children for folder ${folderPath}:`, error);
+    }
   }
   return folderDiv;
 }
 
-export function renderFileList(
+export async function renderFileList(
   entries,
   container,
   rootFolder,
@@ -249,7 +290,7 @@ export function renderFileList(
 
   // Defensive: handle undefined/null/empty entries
   if (!Array.isArray(entries)) {
-    showNotification("Error: Could not read directory contents.", "error");
+    console.error("Error: Could not read directory contents.");
     return;
   }
 
@@ -261,6 +302,7 @@ export function renderFileList(
   const folderName = rootFolder.split(/[\\/]/).pop();
   const rootEntry = {
     name: folderName,
+    entry: folderName,
     type: "DIRECTORY",
     isRoot: true,
     entries: entries,
@@ -268,9 +310,9 @@ export function renderFileList(
     absPath: rootFolder,
   };
   
-    const folderDiv = createFolderDiv(rootEntry, '', fileExplorerInstance, config, true);
-    fileList.innerHTML = '';
-    fileList.appendChild(folderDiv);
+  const folderDiv = await createFolderDiv(rootEntry, '', fileExplorerInstance, config, true);
+  fileList.innerHTML = '';
+  fileList.appendChild(folderDiv);
 }
 
 export function updateSidebarHighlight(panelName) {

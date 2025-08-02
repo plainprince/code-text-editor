@@ -8,6 +8,10 @@ import { applyExplorerTheme } from "./explorer-theme.js";
 import {
   renderFileList,
   updateSidebarHighlight,
+  createFileIcon,
+  createFileItem,
+  createFolderDiv,
+  updateSelection,
 } from "./explorer-ui.js";
 import ExplorerActions from "./explorer-actions.js";
 import { bindExplorerEvents } from "./explorer-events.js";
@@ -28,12 +32,13 @@ export default class FileExplorer {
     this.clipboardType = null; // 'copy' or 'cut'
     this.searchResults = [];
     this.config = {};
-    this.selectedItems = [];
+    this.selectedItems = new Set(); // Use Set for better performance
     this.lastSelectedIndex = -1;
     this.contextMenuOpen = false;
     this.tooltipTimer = null;
     this.tooltipActive = false;
     this._openFolders = {};
+    this._selectionAnchor = null; // For shift+click selection
     
     // History
     this.history = new ExplorerHistory(this);
@@ -72,15 +77,76 @@ export default class FileExplorer {
 
   async loadConfig() {
     // Load config from settings (assume window.settings exists)
-    this.config = window.settings.get("fileExplorer");
-    this.rootFolders = this.config.lastOpened || [];
+    this.config = window.settings.get("fileExplorer") || {};
+    
+    // Initialize default config if needed
+    if (!this.config.lastOpened) {
+      this.config.lastOpened = [];
+    }
+    if (!this.config.openFolders) {
+      this.config.openFolders = {};
+    }
+    if (!this.config.selectedItems) {
+      this.config.selectedItems = [];
+    }
+    
+    // Load last opened folders
+    this.rootFolders = [...this.config.lastOpened]; // Clone to avoid reference issues
+    
+    // Load folder state
+    this._openFolders = {...this.config.openFolders}; // Clone to avoid reference issues
+    
+    // Load selection state
+    this.selectedItems = new Set(this.config.selectedItems); // Convert array to Set
+    this._selectionAnchor = null;
   }
 
   async loadLastOpenedFolders() {
-    this._openFolders = window.settings.get("fileExplorer.openFolders") || {};
     if (this.rootFolders.length > 0) {
-      document.getElementById("welcome-screen").style.display = "none";
+      // Hide welcome screen
+      const welcomeScreen = document.getElementById("welcome-screen");
+      if (welcomeScreen) {
+        welcomeScreen.style.display = "none";
+      }
+      
+      // Show sidebar
+      const sidebar = document.getElementById("sidebar-left");
+      if (sidebar) {
+        sidebar.style.display = "";
+      }
+      
+      // Load folders
       await this.loadCurrentDirectory();
+      
+      // Restore selection
+      if (this.selectedItems.length > 0) {
+        const allItems = Array.from(document.querySelectorAll('.file-item:not([style*="display: none"]), .folder-header:not([style*="display: none"])'));
+        allItems.forEach(item => {
+          if (this.selectedItems.includes(item.dataset.path)) {
+            item.classList.add('selected');
+          }
+        });
+      }
+    }
+  }
+  
+  async saveWorkspaceState() {
+    try {
+      // Create a new config object to avoid reference issues
+      const newConfig = {
+        ...this.config,
+        lastOpened: [...this.rootFolders],
+        openFolders: {...this._openFolders},
+        selectedItems: [...this.selectedItems] // Convert Set to array for storage
+      };
+      
+      // Save to settings
+      await window.settings.set("fileExplorer", newConfig);
+      
+      // Update local config
+      this.config = newConfig;
+    } catch (e) {
+      console.error("[FileExplorer] Error saving workspace state:", e);
     }
   }
 
@@ -89,8 +155,8 @@ export default class FileExplorer {
   }
 
   // UI rendering
-  renderFileList(entries, container, rootFolder) {
-    renderFileList(entries, container, rootFolder, this);
+  async renderFileList(entries, container, rootFolder) {
+    await renderFileList(entries, container, rootFolder, this);
   }
 
   // Modal dialogs
@@ -160,14 +226,153 @@ export default class FileExplorer {
     return this.actions.openFile(path);
   }
 
-  toggleFolder(folderPath) {
+  async toggleFolder(folderPath) {
+    console.log(`Toggling folder: ${folderPath}`);
+    const folderDiv = document.querySelector(`[data-path="${folderPath}"]`);
+    if (!folderDiv) {
+      console.error(`Folder element not found for path: ${folderPath}`);
+      return;
+    }
+
+    // Toggle open state
     this._openFolders[folderPath] = !this._openFolders[folderPath];
-    this.saveOpenFoldersState();
-    this.loadCurrentDirectory();
+    const isOpen = this._openFolders[folderPath];
+    
+    // Update folder icon
+    const headerDiv = folderDiv.querySelector('.folder-header') || folderDiv.querySelector('.root-folder-header');
+    if (headerDiv) {
+        const iconSpan = headerDiv.querySelector('.file-icon');
+        if (iconSpan) {
+            const entry = { type: 'DIRECTORY', name: folderDiv.dataset.name };
+            iconSpan.innerHTML = createFileIcon(entry, this.config, isOpen);
+        }
+    }
+
+    // Add a CSS class to the folder div to indicate open/closed state
+    if (isOpen) {
+        folderDiv.classList.add('folder-open');
+    } else {
+        folderDiv.classList.remove('folder-open');
+    }
+
+    // Handle folder content
+    if (isOpen) {
+        try {
+            // Get or create content div
+            let contentDiv = folderDiv.querySelector('.folder-content');
+            if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'folder-content';
+                folderDiv.appendChild(contentDiv);
+            } else {
+                // Show the content div if it exists
+                contentDiv.style.display = '';
+            }
+            
+            // Only clear and repopulate if it's empty
+            if (contentDiv.children.length === 0) {
+                // Load folder contents
+                const entries = await this.getFolderContents(folderPath);
+                
+                if (!Array.isArray(entries) || entries.length === 0) {
+                    console.log(`No entries found for ${folderPath}`);
+                    return await this.saveWorkspaceState();
+                }
+                
+                // Sort: folders first, then files, both alphabetically
+                const sortedEntries = entries.sort((a, b) => {
+                    if (a.type === "DIRECTORY" && b.type !== "DIRECTORY") return -1;
+                    if (a.type !== "DIRECTORY" && b.type === "DIRECTORY") return 1;
+                    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+                });
+
+                console.log(`Rendering ${sortedEntries.length} entries for ${folderPath}`);
+                
+                // Create and append child elements directly (simplified approach)
+                for (const entry of sortedEntries) {
+                    const entryPath = `${folderPath}/${entry.name}`;
+                    
+                    if (entry.type === 'DIRECTORY') {
+                        // For directories, create a simpler placeholder that will load contents when clicked
+                        const folderElement = document.createElement('div');
+                        folderElement.className = 'file-folder';
+                        folderElement.dataset.path = entryPath;
+                        folderElement.dataset.type = 'DIRECTORY';
+                        folderElement.dataset.name = entry.name;
+                        
+                        // Create folder header
+                        const folderHeader = document.createElement('div');
+                        folderHeader.className = 'folder-header';
+                        folderHeader.dataset.path = entryPath;
+                        folderHeader.innerHTML = `
+                            ${createFileIcon(entry, this.config, false)}
+                            <div class="file-name">
+                                <p>${entry.name}</p>
+                            </div>
+                        `;
+                        
+                        // Add click handler to folder header
+                        folderHeader.addEventListener('click', (e) => {
+                            if (e.detail === 1) { // single click
+                                updateSelection(this, entryPath, e.ctrlKey, e.shiftKey, e.metaKey);
+                                this.toggleFolder(entryPath);
+                                e.stopPropagation(); // Prevent event bubbling
+                            }
+                        });
+                        
+                        // Add context menu handler
+                        folderHeader.addEventListener('contextmenu', (e) => {
+                            this.showContextMenu(e, {
+                                path: entryPath,
+                                type: 'DIRECTORY',
+                                name: entry.name,
+                                entry: entry
+                            });
+                            e.stopPropagation(); // Prevent event bubbling
+                        });
+                        
+                        // Add tooltip handlers
+                        folderHeader.addEventListener('mouseenter', (e) => {
+                            this.startTooltipTimer(e, entryPath);
+                        });
+                        folderHeader.addEventListener('mouseleave', () => {
+                            this.clearTooltipTimer();
+                        });
+                        
+                        folderElement.appendChild(folderHeader);
+                        contentDiv.appendChild(folderElement);
+                    } else {
+                        // For files, create a file item directly
+                        const fileElement = await createFileItem({ 
+                            ...entry, 
+                            fullPath: entryPath 
+                        }, folderPath, this, this.config);
+                        
+                        if (fileElement) {
+                            contentDiv.appendChild(fileElement);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(`Error toggling folder ${folderPath}:`, error);
+            this.showNotification({ message: `Error opening folder: ${error.message}`, type: 'error' });
+        }
+    } else {
+        // If closing folder, hide its contents but don't remove from DOM
+        const contentDiv = folderDiv.querySelector('.folder-content');
+        if (contentDiv) {
+            contentDiv.style.display = 'none';
+            // We don't clear the content - this allows for faster reopening
+        }
+    }
+
+    await this.saveWorkspaceState();
   }
 
-  saveOpenFoldersState() {
-    window.settings.set("fileExplorer.openFolders", this._openFolders);
+  // This method is now deprecated in favor of saveWorkspaceState
+  async saveOpenFoldersState() {
+    await this.saveWorkspaceState();
   }
   async undoLastAction() {
     return this.actions.undoLastAction();
@@ -187,22 +392,27 @@ export default class FileExplorer {
   }
 
   // Add a root folder and refresh the explorer
-  addRootFolder(path) {
+  async addRootFolder(path) {
     if (!this.rootFolders.includes(path)) {
       this.rootFolders.push(path);
-      this.loadSingleFolder(path); // Only load the new folder
-      window.settings.set("fileExplorer.lastOpened", this.rootFolders);
-    }
-    // Always keep sidebar open when adding a folder
-    const sidebar = document.getElementById("sidebar-left");
-    if (sidebar) {
-      sidebar.style.display = "";
+      // Load the new folder
+      await this.loadSingleFolder(path);
+      // Save workspace state
+      await this.saveWorkspaceState();
+      // Keep project panel active
+      window.setLeftPanel("project-panel");
     }
   }
 
   // Load a single folder into the sidebar
   async loadSingleFolder(rootFolder) {
+    console.log(`Loading folder: ${rootFolder}`);
     const sidebar = document.getElementById("sidebar-left");
+    if (!sidebar) {
+      console.error("Sidebar element not found");
+      return;
+    }
+    
     let fileList = sidebar.querySelector("#file-list");
     if (!fileList) {
         fileList = document.createElement('div');
@@ -213,60 +423,108 @@ export default class FileExplorer {
     this._folderSnapshots = this._folderSnapshots || {};
     this._openFolders = this._openFolders || {};
 
-    const entries = await this.getFolderContents(rootFolder, true);
-    this.renderFileList(entries, fileList, rootFolder);
-    this._folderSnapshots[rootFolder] = entries;
+    try {
+      // Get folder contents for the root level
+      const entries = await this.getFolderContents(rootFolder);
+      
+      if (!Array.isArray(entries)) {
+        console.error(`Invalid entries returned for ${rootFolder}:`, entries);
+        return;
+      }
+      
+      console.log(`Loaded ${entries.length} entries for ${rootFolder}`);
+      
+      // Render the file list
+      await this.renderFileList(entries, fileList, rootFolder);
+      this._folderSnapshots[rootFolder] = entries;
 
-    if (!this._pollInterval) {
-      this._pollInterval = setInterval(() => this.pollForChanges(), 1000);
+      if (!this._pollInterval) {
+        this._pollInterval = setInterval(() => this.pollForChanges(), 1000);
+      }
+    } catch (error) {
+      console.error("Error loading folder:", error);
+      this.showNotification({ message: `Error loading folder: ${error.message}`, type: 'error' });
     }
   }
 
   // Load and render the current directory/folders, with polling and snapshotting
   async loadCurrentDirectory() {
     const sidebar = document.getElementById("sidebar-left");
-    const fileList = sidebar.querySelector("#file-list");
-    if (fileList) {
-      fileList.innerHTML = "";
+    let fileList = sidebar.querySelector("#file-list");
+    if (!fileList) {
+      fileList = document.createElement('div');
+      fileList.id = 'file-list';
+      sidebar.appendChild(fileList);
     }
+    fileList.innerHTML = "";
+    
+    // Load each root folder
     for (const rootFolder of this.rootFolders) {
       await this.loadSingleFolder(rootFolder);
     }
+    
+    // Show welcome screen if no folders
+    const welcomeScreen = document.getElementById("welcome-screen");
+    if (welcomeScreen) {
+      welcomeScreen.style.display = this.rootFolders.length === 0 ? "" : "none";
+    }
   }
 
-  // Read folder contents using Neutralino, now with recursive fetching
-  async getFolderContents(path, isRoot = false) {
+  // Read folder contents using Neutralino
+  async getFolderContents(path) {
     try {
-      let entries = [];
-      const result = await Neutralino.filesystem.readDirectory(path);
-
-      for (const e of result) {
-        // Skip .DS_Store files
-        if (e.entry === '.DS_Store') continue;
-
-        const entryPath = `${path}/${e.entry}`;
-        const entry = {
-          name: e.entry,
-          type: e.type,
-          fullPath: entryPath,
-          absPath: entryPath,
-          entries: e.type === "DIRECTORY" ? [] : undefined,
-        };
-
-        if (e.type === "DIRECTORY") {
-          // If this is a directory, check if it should be open
-          const isOpen = this._openFolders ? this._openFolders[entryPath] : isRoot;
-          if (isOpen) {
-            entry.entries = await this.getFolderContents(entryPath, false);
-          }
-        }
-        entries.push(entry);
-      }
-      return entries;
+      // Use Neutralino API to read directory contents
+      // The API returns an array of DirectoryEntry objects with entry, path, and type properties
+      const entries = await Neutralino.filesystem.readDirectory(path);
+      
+      // Filter out unwanted files like .DS_Store
+      const filteredEntries = entries.filter(entry => entry.entry !== '.DS_Store');
+      
+      // Ensure each entry has a name property (required for rendering)
+      return filteredEntries.map(entry => ({
+        ...entry,
+        name: entry.entry
+      }));
     } catch (e) {
       console.error("Error reading directory:", path, e);
-      // Optional: Propagate error to UI
       this.showNotification({ message: `Could not read directory: ${path}`, type: 'error' });
+      return [];
+    }
+  }
+  
+  // Read folder contents recursively (including subfolders)
+  async getRecursiveFolderContents(path, depth = 1) {
+    try {
+      // Limit recursion depth to avoid performance issues
+      const maxDepth = 2;
+      
+      const entries = await this.getFolderContents(path);
+      
+      // Process each entry to add entries for directories
+      const processedEntries = await Promise.all(entries.map(async entry => {
+        const processedEntry = { 
+          ...entry, 
+          name: entry.entry,
+          entry: entry.entry
+        };
+        
+        if (entry.type === 'DIRECTORY' && depth < maxDepth) {
+          // For directories, recursively get their contents but limit depth
+          const subEntries = await this.getFolderContents(`${path}/${entry.entry}`);
+          processedEntry.entries = subEntries.map(subEntry => ({
+            ...subEntry,
+            name: subEntry.entry,
+            entry: subEntry.entry
+          }));
+        }
+        
+        return processedEntry;
+      }));
+      
+      return processedEntries;
+    } catch (e) {
+      console.error("Error reading directory recursively:", path, e);
+      this.showNotification({ message: `Could not read directory recursively: ${path}`, type: 'error' });
       return [];
     }
   }
@@ -322,21 +580,29 @@ export default class FileExplorer {
   async pollForChanges() {
     if (!this.rootFolders || this.rootFolders.length === 0) return;
     const sidebar = document.getElementById("sidebar-left");
+    let fileList = sidebar.querySelector("#file-list");
+    if (!fileList) {
+      fileList = document.createElement('div');
+      fileList.id = 'file-list';
+      sidebar.appendChild(fileList);
+    }
+    
     let needsRerender = false;
     for (const rootFolder of this.rootFolders) {
-      // Pass `true` to ensure root folders are checked
-      const newEntries = await this.getFolderContents(rootFolder, true);
+      // Use recursive loading for polling as well
+      const newEntries = await this.getRecursiveFolderContents(rootFolder);
       const oldEntries = this._folderSnapshots[rootFolder] || [];
       if (!this._snapshotsEqual(oldEntries, newEntries)) {
         needsRerender = true;
         this._folderSnapshots[rootFolder] = newEntries;
       }
     }
+    
     if (needsRerender) {
-      sidebar.innerHTML = "";
+      fileList.innerHTML = "";
       for (const rootFolder of this.rootFolders) {
         const entries = this._folderSnapshots[rootFolder];
-        this.renderFileList(entries, sidebar, rootFolder);
+        await this.renderFileList(entries, sidebar, rootFolder);
       }
     }
   }

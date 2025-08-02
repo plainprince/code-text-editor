@@ -5,22 +5,50 @@ class Settings {
   }
 
   async _getAppDataPath() {
-    let path;
-    let home = "";
-    if (NL_OS === "Windows") {
-      // On Windows, use USERPROFILE for home, APPDATA for config root
-      home = await Neutralino.os.getEnv("USERPROFILE");
-      path = await Neutralino.os.getEnv("APPDATA");
-    } else {
-      // On macOS/Linux, use HOME
-      home = await Neutralino.os.getEnv("HOME");
-      if (NL_OS === "Darwin") {
-        path = `${home}/Library/Application Support`;
-      } else {
-        path = `${home}/.config`;
+    // Use Neutralino's data path for settings
+    const path = await Neutralino.os.getPath("data");
+    const appPath = `${path}/my-code-editor`;
+    
+    // Create app directory if it doesn't exist
+    try {
+      await Neutralino.filesystem.readDirectory(appPath);
+    } catch (e) {
+      // Try using mkdir -p first (works on Unix systems)
+      if (NL_OS !== 'Windows') {
+        try {
+          await Neutralino.os.execCommand(`mkdir -p "${appPath}"`);
+          return appPath;
+        } catch (cmdErr) {
+          console.warn("[Settings] mkdir -p failed:", cmdErr);
+          // Fall through to manual creation
+        }
+      }
+      
+      // Manual directory creation
+      try {
+        const parts = appPath.split('/');
+        let currentPath = '';
+        for (const part of parts) {
+          if (!part) continue;
+          currentPath += '/' + part;
+          try {
+            await Neutralino.filesystem.readDirectory(currentPath);
+          } catch (e2) {
+            try {
+              await Neutralino.filesystem.createDirectory(currentPath);
+            } catch (e3) {
+              console.error("[Settings] Failed to create directory:", currentPath, e3);
+              throw e3;
+            }
+          }
+        }
+      } catch (e2) {
+        console.error("[Settings] Failed to create app directory:", e2);
+        throw e2;
       }
     }
-    return `${path}/my-code-editor`;
+    
+    return appPath;
   }
 
   async load() {
@@ -91,11 +119,18 @@ class Settings {
             sidebar: "#f5f5f5",
             border: "#ddd",
             hover: "#e8e8e8",
-            selected: "#007acc",
+            selected: "#666666",
             fontFamily: "monospace",
             fontSize: "13px",
             fontPath: "./fonts/JetBrainsMono-Regular.ttf",
             welcomeDescFontSize: "12pt",
+            contextMenu: {
+              background: "#ffffff",
+              text: "#000000",
+              border: "#ddd",
+              hover: "#e8e8e8",
+              shortcut: "#666666"
+            },
           },
           dark: {
             background: "#1e1e1e",
@@ -103,11 +138,18 @@ class Settings {
             sidebar: "#252526",
             border: "#3c3c3c",
             hover: "#2a2d2e",
-            selected: "#007acc",
+            selected: "#4d4d4d",
             fontFamily: "monospace",
             fontSize: "13px",
             fontPath: "./fonts/JetBrainsMono-Regular.ttf",
             welcomeDescFontSize: "12px",
+            contextMenu: {
+              background: "#252526",
+              text: "#ffffff",
+              border: "#3c3c3c",
+              hover: "#2a2d2e",
+              shortcut: "#888aad"
+            },
           },
         },
         shortcuts: {
@@ -144,20 +186,28 @@ class Settings {
   async save() {
     if (!this.settingsPath) return;
     try {
-      // Ensure parent directory exists
-      const parentDir = this.settingsPath.substring(0, this.settingsPath.lastIndexOf('/'));
-      try {
-        await Neutralino.filesystem.readDirectory(parentDir);
-      } catch (dirErr) {
-        await Neutralino.filesystem.createDirectory(parentDir);
+      const settingsStr = JSON.stringify(this.settings, null, 4);
+      
+      if (NL_OS !== 'Windows') {
+        // On Unix systems, use terminal commands for atomic write
+        const tempPath = '/tmp/settings.json.tmp';
+        
+        // Write to temp file
+        await Neutralino.filesystem.writeFile(tempPath, settingsStr);
+        
+        // Move temp file to final location (atomic operation)
+        await Neutralino.os.execCommand(`mv "${tempPath}" "${this.settingsPath}"`);
+        console.log("[Settings] Successfully saved settings via command:", this.settingsPath);
+      } else {
+        // On Windows, try direct write
+        try {
+          await Neutralino.filesystem.writeFile(this.settingsPath, settingsStr);
+          console.log("[Settings] Successfully saved settings to:", this.settingsPath);
+        } catch (writeErr) {
+          console.error("[Settings] Failed to write settings:", writeErr);
+          throw writeErr;
+        }
       }
-
-      // Write settings with proper error handling
-      await Neutralino.filesystem.writeFile(
-        this.settingsPath,
-        JSON.stringify(this.settings, null, 4),
-      );
-      console.log("[Settings] Successfully saved settings to:", this.settingsPath);
     } catch (e) {
       console.error("[Settings] Error saving settings:", e);
       if (window.fileExplorer && typeof window.fileExplorer.showNotification === 'function') {

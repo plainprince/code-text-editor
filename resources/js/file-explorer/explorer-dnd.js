@@ -18,8 +18,9 @@ export function setupExplorerDnD(fileExplorer) {
         e.dataTransfer.effectAllowed = 'move';
         
         // If the dragged item is not selected, select it
-        if (!fileExplorer.selectedItems.includes(dragSrcEl.dataset.path)) {
-            fileExplorer.selectedItems = [dragSrcEl.dataset.path];
+        if (!fileExplorer.selectedItems.has(dragSrcEl.dataset.path)) {
+            fileExplorer.selectedItems.clear();
+            fileExplorer.selectedItems.add(dragSrcEl.dataset.path);
             const allItems = document.querySelectorAll('.file-item, .folder-header');
             allItems.forEach(item => {
                 if (item.dataset.path === dragSrcEl.dataset.path) {
@@ -31,7 +32,7 @@ export function setupExplorerDnD(fileExplorer) {
         }
         
         const dragData = {
-            items: fileExplorer.selectedItems,
+            items: Array.from(fileExplorer.selectedItems),
             // You can add more data here if needed
         };
         e.dataTransfer.setData('application/json', JSON.stringify(dragData));
@@ -110,13 +111,28 @@ export function setupExplorerDnD(fileExplorer) {
         if (!dropTarget) return false;
 
         const destPath = dropTarget.dataset.path;
-        const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
+        let dragData;
+        try {
+            const jsonStr = e.dataTransfer.getData('application/json');
+            if (!jsonStr) {
+                console.error("[DnD] No drag data found");
+                return false;
+            }
+            dragData = JSON.parse(jsonStr);
+            if (!dragData || !Array.isArray(dragData.items)) {
+                console.error("[DnD] Invalid drag data format:", dragData);
+                return false;
+            }
+        } catch (err) {
+            console.error("[DnD] Error parsing drag data:", err);
+            return false;
+        }
 
         for (const srcPath of dragData.items) {
             if (srcPath !== destPath) {
                 let finalDest = destPath;
                 // If drop target is a directory, append the filename
-                const isDir = dropTarget.classList.contains('folder-header');
+                const isDir = dropTarget.classList.contains('folder-header') || dropTarget.classList.contains('root-folder-header');
                 if (isDir) {
                     const fileName = srcPath.substring(srcPath.lastIndexOf('/') + 1);
                     finalDest = destPath + '/' + fileName;
