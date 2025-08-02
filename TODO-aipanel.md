@@ -2,6 +2,27 @@
 - [ ] Any openai-based api
 - [ ] ollama preconfigured
 - [ ] auto-detecting existing ollama models
-- [ ] allowing some other api's like anthropic, xAI etc.
+- [ ] allowing some other api's like anthropic, xAI, mistral, gemini etc.
 - [ ] MCP protocol integration (custom MCP servers)
-- [ ] 
+- [ ] API key management via settings json file
+- [ ] Allowing custom rate limits for API's (local rate limits for e.g. groq AI to not spam the endpoint too much by waiting)
+- [ ] Retry buttons for failed AI stuff
+- [ ] Inline AI popup (ask AI, inline assist, generate tab (or suggestion whatever you call it) at cursor, Explain, generate documentation (only in sidebar, project-wide, folder modal when pressed if there are multiple folders added to workspace)) - show the same stuff in the right sidebar in the tools
+- [ ] Diff and allow/reject buttons for AI agents
+- [ ] Keyboard shortcuts for asking AI (Just make everything an action useable in cmd+shift+p and allow a keyboard shortcut customizable in settings json file)
+- [ ] Stream response!!!!
+- [ ] System prompt customization
+- [ ] Prompt modification (including tho -> though, ...)
+- [ ] MAX mode (no prompt modification, larger context window limit - make the default context window limit a little smaller - this is for money b*tch)
+- [ ] AI panel context (pasting code from the codebase into the input field adds the lines as context, dragging a file over adds it as context, writing @ and then a file name adds it to context and makes the /\@.*\\..*/ (yes this is a regexp) look like a link (though only when actually added to context (show suggestions field for what file you could mean with type-ahead and when tab is pressed it selects the one you are on. Using arrow keys for selection up/down to select the file you want to add to context)))
+- [ ] Active tab button (Click to add currently open file to context for the AI)
+- [ ] Truncate context intelligently (Use the configured model to summarize files, websites etc.)
+- [ ] Add recent chats as context
+- [ ] Whole folder context
+- [ ] Save/load named prompts (e.g. “Refactor”, “Explain”, “Docstring”)
+- [ ] Custom modes (Allow/reject what tools are able to be used by the agent)
+- [ ] Tools of course (including web search with a free google api or some other search engine and link fetching)
+- [ ] Code highlighting in edits by tools
+- [ ] .somethingrules (/\..*rules/) file that gets appended to the prompt (setting to turn it off in settings json file for safety reasons)
+- [ ] Checkpoints (Undo all tool calls)
+- [ ] Token cost saving by using cached prompts

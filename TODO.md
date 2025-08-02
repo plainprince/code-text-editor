@@ -75,3 +75,15 @@
 - [ ] Clipboard history (in statusbar)
 - [ ] Quick insert (emojis, UTF-8 etc.) (in statusbar)
 - [ ] vim mode
+- [ ] Add folder to workspace
+- [ ] Store workspace in json file
+- [ ] fast project-wide search by caching the workspace as binary file in settings json file parent folder
+
+
+
+
+
+
+
+
+See @TODO-aipanel.md for ai panel todo's
