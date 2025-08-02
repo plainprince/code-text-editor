@@ -345,7 +345,16 @@ function toggleCommandPalette() {
 
 function toggleTerminal() {
   const terminal = document.getElementById("terminal");
-  terminal.style.display = terminal.style.display === 'none' ? 'block' : 'none';
+  terminal.style.display = terminal.style.display === 'none' ? 'flex' : 'none';
+  
+  // Add event listener to close button if not already added
+  const closeButton = document.getElementById("close-terminal-button");
+  if (closeButton && !closeButton.hasClickListener) {
+    closeButton.addEventListener("click", () => {
+      terminal.style.display = 'none';
+    });
+    closeButton.hasClickListener = true;
+  }
 }
 
 function openSearch() {
