@@ -7,7 +7,6 @@
     "core:default",
     "core:path:default",
     "opener:default",
-    "dialog:default",
     "shell:allow-open",
     "fs:allow-read",
     "fs:allow-write",
