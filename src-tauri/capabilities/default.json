@@ -8,12 +8,6 @@
     "core:path:default",
     "opener:default",
     "dialog:default",
-    "fs:default",
-    "fs:allow-read",
-    "fs:allow-write",
-    "fs:allow-mkdir",
-    "fs:read-all",
-    "fs:write-all",
     "shell:default"
   ]
 }

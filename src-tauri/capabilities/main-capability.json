@@ -12,18 +12,9 @@
     "core:menu:default",
     "core:tray:default",
     "core:window:allow-set-title",
-    "fs:allow-app-write",
-    "fs:allow-app-meta-recursive",
-    "fs:allow-app-read-recursive",
-    "fs:allow-app-read",
+    "os:default",
     "dialog:allow-open",
-    {
-      "identifier": "fs:scope",
-      "permissions": [
-        {
-        "allow": [{ "path": "$APPDATA/*" }, { "path": "$HOME/Library/Application Support/*" }]
-        }
-      ]
-    }
+    "shell:default",
+    "shell:allow-spawn"
   ]
 }

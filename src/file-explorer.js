@@ -1,6 +1,6 @@
 // file-explorer.js - Handles file explorer UI and functionality
 
-import { readDirectory, getFileObject, readFile } from './file-system.js';
+import { readDirectory, getFileObject, readFile, writeFile } from './file-system.js';
 
 class FileExplorer {
   constructor() {
@@ -18,6 +18,29 @@ class FileExplorer {
     this.saveFile = this.saveFile.bind(this);
   }
   
+  // Open a specific folder by path
+  async openFolderByPath(folderPath) {
+    try {
+      this.rootFolder = folderPath;
+      const files = await readDirectory(folderPath + '/');
+      this.files = files;
+      this.renderFileTree(files, this.container);
+      
+      // Dispatch event for folder opened
+      document.dispatchEvent(new CustomEvent('folder-opened', {
+        detail: {
+          path: folderPath,
+          files: files
+        }
+      }));
+      
+      return true;
+    } catch (err) {
+      console.error("Failed to open folder:", err);
+      return false;
+    }
+  }
+
   // Open a folder and load its contents
   async openFolder() {
     try {
@@ -87,7 +110,7 @@ class FileExplorer {
     nameSpan.className = 'file-name';
     nameSpan.textContent = file.name;
     
-    if (file.kind === 'directory') {
+    if (file.kind === 'folder') {
       iconSpan.innerHTML = window.settings.icons.folder;
       li.classList.add('folder');
       
@@ -131,6 +154,12 @@ class FileExplorer {
       
       itemContainer.addEventListener('click', () => {
         this.openFile(file.id);
+      });
+      
+      // Add context menu
+      itemContainer.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.showContextMenu(e, file);
       });
     }
     
@@ -202,6 +231,62 @@ class FileExplorer {
     }
   }
   
+  // Open a file by its path (for command palette)
+  async openFileByPath(filePath) {
+    try {
+      // Check if file is already open
+      const existingFile = this.openedFiles.find(f => f.path === filePath);
+      if (existingFile) {
+        this.selectedFile = existingFile.id;
+        
+        // Dispatch event for file opened
+        document.dispatchEvent(new CustomEvent('file-opened', {
+          detail: {
+            id: existingFile.id,
+            path: existingFile.path,
+            name: existingFile.name,
+            content: existingFile.content
+          }
+        }));
+        
+        return true;
+      }
+      
+      // Read file content
+      const content = await readFile(filePath);
+      
+      // Generate ID and create file object
+      const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'untitled';
+      
+      // Add to opened files
+      const openedFile = {
+        id: fileId,
+        path: filePath,
+        name: fileName,
+        content: content
+      };
+      
+      this.openedFiles.push(openedFile);
+      this.selectedFile = fileId;
+      
+      // Dispatch event for file opened
+      document.dispatchEvent(new CustomEvent('file-opened', {
+        detail: {
+          id: fileId,
+          path: filePath,
+          name: fileName,
+          content: content
+        }
+      }));
+      
+      return true;
+    } catch (err) {
+      console.error("Failed to open file by path:", err);
+      return false;
+    }
+  }
+  
   // Save a file
   async saveFile(fileId, content) {
     try {
@@ -264,6 +349,149 @@ class FileExplorer {
     }
     
     return false;
+  }
+  
+  // Show context menu
+  showContextMenu(event, file) {
+    // Remove existing context menu
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+    
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.position = 'absolute';
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.style.zIndex = '1000';
+    
+    const menuItems = [];
+    
+    if (file.kind === 'file') {
+      menuItems.push(
+        { label: 'Open', action: () => this.openFile(file.id) },
+        { label: 'Open in Default App', action: () => this.openInDefaultApp(file.path) },
+        { label: 'Copy Path', action: () => navigator.clipboard.writeText(file.path) },
+        { label: 'Delete', action: () => this.deleteFile(file.path) }
+      );
+    } else {
+      menuItems.push(
+        { label: 'New File', action: () => this.createNewFile(file.path) },
+        { label: 'New Folder', action: () => this.createNewFolder(file.path) },
+        { label: 'Open in Default App', action: () => this.openInDefaultApp(file.path) },
+        { label: 'Copy Path', action: () => navigator.clipboard.writeText(file.path) },
+        { label: 'Delete Folder', action: () => this.deleteFolder(file.path) }
+      );
+    }
+    
+    menuItems.forEach(item => {
+      const menuItem = document.createElement('div');
+      menuItem.className = 'context-menu-item';
+      menuItem.textContent = item.label;
+      menuItem.addEventListener('click', () => {
+        item.action();
+        menu.remove();
+      });
+      menu.appendChild(menuItem);
+    });
+    
+    document.body.appendChild(menu);
+    
+    // Remove menu when clicking elsewhere
+    const removeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('click', removeMenu);
+      }
+    };
+    
+    setTimeout(() => {
+      document.addEventListener('click', removeMenu);
+    }, 0);
+  }
+  
+  async openInDefaultApp(path) {
+    try {
+      await window.__TAURI__.plugin.opener.open(path);
+    } catch (err) {
+      console.error("Failed to open in default app:", err);
+    }
+  }
+  
+  async createNewFile(parentPath) {
+    const fileName = prompt('Enter file name:');
+    if (!fileName) return;
+    
+    const filePath = `${parentPath}/${fileName}`;
+    try {
+      await window.__TAURI__.core.invoke("write_text_file", { 
+        filePath, 
+        content: "" 
+      });
+      
+      // Refresh the folder
+      this.refreshFolder(parentPath);
+    } catch (err) {
+      console.error("Failed to create file:", err);
+      alert("Failed to create file: " + err);
+    }
+  }
+  
+  async createNewFolder(parentPath) {
+    const folderName = prompt('Enter folder name:');
+    if (!folderName) return;
+    
+    const folderPath = `${parentPath}/${folderName}`;
+    try {
+      // Create folder by creating a temporary file and then deleting it
+      const tempFile = `${folderPath}/.gitkeep`;
+      await window.__TAURI__.core.invoke("write_text_file", { 
+        filePath: tempFile, 
+        content: "" 
+      });
+      
+      // Refresh the parent folder
+      this.refreshFolder(parentPath);
+    } catch (err) {
+      console.error("Failed to create folder:", err);
+      alert("Failed to create folder: " + err);
+    }
+  }
+  
+  async deleteFile(filePath) {
+    if (!confirm(`Are you sure you want to delete this file?\n${filePath}`)) {
+      return;
+    }
+    
+    try {
+      // Note: Tauri doesn't have a built-in delete function, we'd need to add one
+      console.log("Delete file not implemented yet:", filePath);
+      alert("Delete functionality needs to be implemented in the Rust backend");
+    } catch (err) {
+      console.error("Failed to delete file:", err);
+    }
+  }
+  
+  async deleteFolder(folderPath) {
+    if (!confirm(`Are you sure you want to delete this folder?\n${folderPath}`)) {
+      return;
+    }
+    
+    try {
+      // Note: Tauri doesn't have a built-in delete function, we'd need to add one
+      console.log("Delete folder not implemented yet:", folderPath);
+      alert("Delete functionality needs to be implemented in the Rust backend");
+    } catch (err) {
+      console.error("Failed to delete folder:", err);
+    }
+  }
+  
+  refreshFolder(folderPath) {
+    // Refresh the file tree - simplified implementation
+    if (folderPath === this.rootFolder) {
+      this.openFolderByPath(this.rootFolder);
+    }
   }
 }
 

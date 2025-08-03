@@ -3,6 +3,11 @@
 // Import modules
 import FileExplorer from './file-explorer.js';
 import Editor from './editor.js';
+import Terminal from './terminal.js';
+import DraggablePanes from './draggable-panes.js';
+import { getWorkspaceFiles } from './file-system.js';
+import * as monaco from 'monaco-editor';
+
 
 // Global state
 let currentLeftPanel = "project-panel";
@@ -11,6 +16,16 @@ let openedFiles = [];
 let currentFileId = null;
 let fileExplorer = null;
 let editorInstance = null;
+let terminalInstance = null;
+let draggablePanes = null;
+let workspaceFiles = [];
+let settingsWatcher = null;
+let availableCommands = [
+  { id: 'open-settings', name: 'Open Settings', action: () => openSettings() },
+  { id: 'open-project', name: 'Open Project', action: () => document.getElementById("open-project-button").click() },
+  { id: 'toggle-terminal', name: 'Toggle Terminal', action: () => toggleTerminal() },
+  { id: 'search-files', name: 'Search in Files', action: () => openSearch() }
+];
 
 // Initialize application
 window.addEventListener("DOMContentLoaded", () => {
@@ -20,11 +35,24 @@ window.addEventListener("DOMContentLoaded", () => {
   setupWindowControls();
   setupCommandPalette();
   
-  // Load settings
-  loadSettings();
+  // Load settings and restore last workspace
+  loadSettings().then(() => {
+    // Apply initial theme
+    applyTheme(window.settings.theme || 'dark');
+    restoreLastWorkspace();
+  });
   
   // Initialize file explorer
   initFileExplorer();
+  
+  // Initialize terminal
+  initTerminal();
+  
+  // Initialize settings watcher
+  initSettingsWatcher();
+  
+  // Initialize draggable panes
+  initDraggablePanes();
 });
 
 // Panel management
@@ -153,19 +181,49 @@ function setupWindowControls() {
 
 function setupCommandPalette() {
   document.addEventListener('keydown', (e) => {
-    // Ctrl/Cmd + P to open command palette
+    // Ctrl/Cmd + P to open file palette
     if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
       e.preventDefault();
-      toggleCommandPalette();
+      openFilePalette();
+    }
+    // Ctrl/Cmd + Shift + P to open command palette
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+      e.preventDefault();
+      openCommandPalette();
     }
   });
   
   const cmdPalette = document.getElementById("command-palette");
   const cmdInput = document.getElementById("command-palette-input");
+  const cmdResults = document.getElementById("command-palette-results");
   
   cmdInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       cmdPalette.classList.add("hidden");
+      cmdInput.value = '';
+      cmdResults.innerHTML = '';
+    } else if (e.key === 'Enter') {
+      const selected = cmdResults.querySelector('.selected');
+      if (selected) {
+        selected.click();
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      navigateResults(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      navigateResults(-1);
+    }
+  });
+  
+  cmdInput.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase();
+    const mode = cmdPalette.dataset.mode;
+    
+    if (mode === 'files') {
+      filterFiles(query);
+    } else if (mode === 'commands') {
+      filterCommands(query);
     }
   });
 }
@@ -242,8 +300,9 @@ function updateTabs() {
 
 // Close tab function
 function closeTab(fileId) {
+  // Let file explorer handle the closing logic
   fileExplorer.closeFile(fileId);
-  updateTabs();
+  // The file-closed event will handle the rest
 }
 
 // Save current file function
@@ -255,12 +314,37 @@ async function saveCurrentFile() {
     if (editorInstance) {
       const content = editorInstance.getContent();
       
-      // Save using file explorer
+      // Special handling for settings file
+      if (currentFileId === 'settings') {
+        try {
+          // Parse and validate the settings JSON
+          const newSettings = JSON.parse(content);
+          
+          // Update the global settings object
+          window.settings = { ...window.settings, ...newSettings };
+          
+          // Save to the store
+          await saveSettings();
+          
+          // Update the opened file content
+          const settingsTab = openedFiles.find(file => file.id === 'settings');
+          if (settingsTab) {
+            settingsTab.content = content;
+          }
+          
+          // Settings saved silently
+          return;
+        } catch (parseErr) {
+          console.error("Invalid JSON in settings:", parseErr);
+          showNotification('Invalid JSON in settings file', 'error');
+          return;
+        }
+      }
+      
+      // Save regular files using file explorer
       const success = await fileExplorer.saveFile(currentFileId, content);
       
-      if (success) {
-        showNotification('File saved');
-      } else {
+      if (!success) {
         showNotification('Error saving file', 'error');
       }
     }
@@ -270,25 +354,44 @@ async function saveCurrentFile() {
   }
 }
 
-// Settings management
-const SETTINGS_FILE = 'settings.json';
-const BASE = window.__TAURI__.fs.BaseDirectory.AppConfig;
+// Settings management using Rust file operations
+let settingsFilePath = null;
+
+// Get the settings file path
+async function getSettingsFilePath() {
+  if (!settingsFilePath) {
+    try {
+      settingsFilePath = await window.__TAURI__.core.invoke("get_settings_file_path");
+    } catch (err) {
+      console.error("Failed to get settings file path:", err);
+      // Fallback to a default path if needed
+      settingsFilePath = "settings.json";
+    }
+  }
+  return settingsFilePath;
+}
 
 async function loadSettings() {
   try {
-    const { exists, readTextFile } = window.__TAURI__.fs;
+    const filePath = await getSettingsFilePath();
     
-    if (!(await exists(SETTINGS_FILE, { baseDir: BASE }))) {
-      // File doesn't exist, create it with default settings
+    // Check if settings file exists
+    const exists = await window.__TAURI__.core.invoke("file_exists", { filePath });
+    
+    if (!exists) {
+      // File doesn't exist, save default settings
       await saveSettings();
       return;
     }
     
-    const file = await readTextFile(SETTINGS_FILE, { baseDir: BASE });
-    const loadedSettings = JSON.parse(file);
+    // Read settings file
+    const content = await window.__TAURI__.core.invoke("read_text_file", { filePath });
+    const loadedSettings = JSON.parse(content);
+    
+    // Merge loaded settings with current settings
     window.settings = { ...window.settings, ...loadedSettings };
   } catch (err) {
-    console.error('Fehler beim Laden der Settings:', err);
+    console.error('Error loading settings:', err);
     // If there's any error, try to create the file with default settings
     await saveSettings();
   }
@@ -296,18 +399,11 @@ async function loadSettings() {
 
 async function saveSettings() {
   try {
-    const { writeTextFile, createDir, exists } = window.__TAURI__.fs;
+    const filePath = await getSettingsFilePath();
+    const content = JSON.stringify(window.settings, null, 2);
     
-    // Ensure the config directory exists
-    try {
-      await exists("", { baseDir: BASE });
-    } catch (e) {
-      // Directory doesn't exist, create it
-      await createDir("", { baseDir: BASE, recursive: true });
-    }
-    
-    const txt = JSON.stringify(window.settings, null, 2);
-    await writeTextFile(SETTINGS_FILE, txt, { baseDir: BASE });
+    // Write settings to file
+    await window.__TAURI__.core.invoke("write_text_file", { filePath, content });
   } catch (err) {
     console.error("Failed to save settings:", err);
   }
@@ -315,12 +411,11 @@ async function saveSettings() {
 
 async function openSettings() {
   try {
-    const { readTextFile } = window.__TAURI__.fs;
-    
-    // Ensure settings file exists before opening
+    // Ensure settings are loaded
     await loadSettings();
     
-    const content = await readTextFile(SETTINGS_FILE, { baseDir: BASE });
+    // Create JSON representation of current settings
+    const content = JSON.stringify(window.settings, null, 2);
     
     // Create a virtual file for the editor
     const settingsFile = {
@@ -333,6 +428,9 @@ async function openSettings() {
     const existingTab = openedFiles.find(file => file.id === 'settings');
     if (!existingTab) {
       openedFiles.push(settingsFile);
+    } else {
+      // Update existing tab with current settings
+      existingTab.content = content;
     }
     
     currentFileId = 'settings';
@@ -344,27 +442,38 @@ async function openSettings() {
   }
 }
 
-// UI functions
-function toggleCommandPalette() {
-  const cmdPalette = document.getElementById("command-palette");
-  cmdPalette.classList.toggle("hidden");
-  
-  if (!cmdPalette.classList.contains("hidden")) {
-    document.getElementById("command-palette-input").focus();
+// Restore the last opened workspace
+async function restoreLastWorkspace() {
+  try {
+    if (window.settings.lastProject) {
+      // Try to open the last project
+      const opened = await fileExplorer.openFolderByPath(window.settings.lastProject);
+      if (opened) {
+        // Show project panel
+        setLeftPanel("project-panel");
+      } else {
+        // If failed to open, clear the invalid path
+        window.settings.lastProject = null;
+        await saveSettings();
+      }
+    }
+  } catch (err) {
+    console.error("Failed to restore last workspace:", err);
+    // Clear invalid workspace setting
+    window.settings.lastProject = null;
+    await saveSettings();
   }
 }
 
+// UI functions
+function toggleCommandPalette() {
+  // Legacy function - now calls the new command palette
+  openCommandPalette();
+}
+
 function toggleTerminal() {
-  const terminal = document.getElementById("terminal");
-  terminal.style.display = terminal.style.display === 'none' ? 'flex' : 'none';
-  
-  // Add event listener to close button if not already added
-  const closeButton = document.getElementById("close-terminal-button");
-  if (closeButton && !closeButton.hasClickListener) {
-    closeButton.addEventListener("click", () => {
-      terminal.style.display = 'none';
-    });
-    closeButton.hasClickListener = true;
+  if (terminalInstance) {
+    terminalInstance.toggle();
   }
 }
 
@@ -429,8 +538,16 @@ function initFileExplorer() {
   document.addEventListener('no-file-selected', () => {
     currentFileId = null;
     
+    // Destroy editor instance and show welcome screen
     if (editorInstance) {
-      editorInstance.setContent('');
+      editorInstance.destroy();
+      editorInstance = null;
+    }
+    
+    // Show welcome screen
+    const welcomeScreen = document.getElementById("welcome-screen");
+    if (welcomeScreen) {
+      welcomeScreen.style.display = 'flex';
     }
     
     document.getElementById("editor-filename").textContent = '';
@@ -438,7 +555,53 @@ function initFileExplorer() {
   });
   
   // Set up event listener for file closed
-  document.addEventListener('file-closed', () => {
+  document.addEventListener('file-closed', (e) => {
+    const { id } = e.detail;
+    
+    // Remove from main.js openedFiles array
+    const fileIndex = openedFiles.findIndex(f => f.id === id);
+    if (fileIndex !== -1) {
+      openedFiles.splice(fileIndex, 1);
+    }
+    
+    // If we just closed the current file, handle the state
+    if (currentFileId === id) {
+      if (openedFiles.length > 0) {
+        // The file explorer should have already set a new selected file
+        // Get the new selected file from file explorer
+        if (fileExplorer.selectedFile) {
+          currentFileId = fileExplorer.selectedFile;
+          const file = openedFiles.find(f => f.id === currentFileId);
+          if (file) {
+            updateEditor(currentFileId, file.content);
+            document.getElementById("editor-filename").textContent = file.name;
+          }
+        } else {
+          // Fallback to first file
+          currentFileId = openedFiles[0].id;
+          updateEditor(currentFileId, openedFiles[0].content);
+          document.getElementById("editor-filename").textContent = openedFiles[0].name;
+        }
+      } else {
+        // No files left open - show welcome screen
+        currentFileId = null;
+        
+        // Destroy editor instance and show welcome screen
+        if (editorInstance) {
+          editorInstance.destroy();
+          editorInstance = null;
+        }
+        
+        // Show welcome screen
+        const welcomeScreen = document.getElementById("welcome-screen");
+        if (welcomeScreen) {
+          welcomeScreen.style.display = 'flex';
+        }
+        
+        document.getElementById("editor-filename").textContent = '';
+      }
+    }
+    
     updateTabs();
   });
   
@@ -452,6 +615,300 @@ function initFileExplorer() {
       
       // Show project panel
       setLeftPanel("project-panel");
+      
+      // Load workspace files for command palette
+      try {
+        workspaceFiles = await getWorkspaceFiles(fileExplorer.rootFolder);
+      } catch (err) {
+        console.error("Failed to load workspace files:", err);
+      }
     }
+  });
+}
+
+// Command Palette Functions
+async function openFilePalette() {
+  if (!fileExplorer || !fileExplorer.rootFolder) {
+    showNotification('No project opened', 'error');
+    return;
+  }
+  
+  const cmdPalette = document.getElementById("command-palette");
+  const cmdInput = document.getElementById("command-palette-input");
+  const cmdResults = document.getElementById("command-palette-results");
+  
+  cmdPalette.dataset.mode = 'files';
+  cmdInput.placeholder = 'Search files...';
+  cmdInput.value = '';
+  cmdResults.innerHTML = '';
+  
+  // Load workspace files if not already loaded
+  if (workspaceFiles.length === 0) {
+    try {
+      workspaceFiles = await getWorkspaceFiles(fileExplorer.rootFolder);
+    } catch (err) {
+      console.error("Failed to load workspace files:", err);
+      showNotification('Failed to load workspace files', 'error');
+      return;
+    }
+  }
+  
+  // Show all files initially
+  displayFiles(workspaceFiles.slice(0, 20)); // Limit to first 20 for performance
+  
+  cmdPalette.classList.remove("hidden");
+  cmdInput.focus();
+}
+
+function openCommandPalette() {
+  const cmdPalette = document.getElementById("command-palette");
+  const cmdInput = document.getElementById("command-palette-input");
+  const cmdResults = document.getElementById("command-palette-results");
+  
+  cmdPalette.dataset.mode = 'commands';
+  cmdInput.placeholder = 'Type a command...';
+  cmdInput.value = '';
+  cmdResults.innerHTML = '';
+  
+  // Show all commands initially
+  displayCommands(availableCommands);
+  
+  cmdPalette.classList.remove("hidden");
+  cmdInput.focus();
+}
+
+function filterFiles(query) {
+  if (!query) {
+    displayFiles(workspaceFiles.slice(0, 20));
+    return;
+  }
+  
+  const filtered = workspaceFiles.filter(file => 
+    file.relativePath.toLowerCase().includes(query) ||
+    file.name.toLowerCase().includes(query)
+  ).slice(0, 20);
+  
+  displayFiles(filtered);
+}
+
+function filterCommands(query) {
+  if (!query) {
+    displayCommands(availableCommands);
+    return;
+  }
+  
+  const filtered = availableCommands.filter(cmd => 
+    cmd.name.toLowerCase().includes(query)
+  );
+  
+  displayCommands(filtered);
+}
+
+function displayFiles(files) {
+  const cmdResults = document.getElementById("command-palette-results");
+  cmdResults.innerHTML = '';
+  
+  files.forEach((file, index) => {
+    const item = document.createElement('div');
+    item.className = 'command-item';
+    if (index === 0) item.classList.add('selected');
+    
+    const icon = fileExplorer.getFileIcon(file.name);
+    item.innerHTML = `
+      <span class="command-icon">${icon}</span>
+      <span class="command-name">${file.name}</span>
+      <span class="command-description">${file.relativePath}</span>
+    `;
+    
+    item.addEventListener('click', () => openFileFromPalette(file));
+    cmdResults.appendChild(item);
+  });
+}
+
+function displayCommands(commands) {
+  const cmdResults = document.getElementById("command-palette-results");
+  cmdResults.innerHTML = '';
+  
+  commands.forEach((cmd, index) => {
+    const item = document.createElement('div');
+    item.className = 'command-item';
+    if (index === 0) item.classList.add('selected');
+    
+    item.innerHTML = `
+      <span class="command-icon">⚡</span>
+      <span class="command-name">${cmd.name}</span>
+    `;
+    
+    item.addEventListener('click', () => executeCommand(cmd));
+    cmdResults.appendChild(item);
+  });
+}
+
+function navigateResults(direction) {
+  const results = document.querySelectorAll('.command-item');
+  const current = document.querySelector('.command-item.selected');
+  
+  if (!results.length) return;
+  
+  let newIndex = 0;
+  if (current) {
+    const currentIndex = Array.from(results).indexOf(current);
+    newIndex = currentIndex + direction;
+    
+    if (newIndex < 0) newIndex = results.length - 1;
+    if (newIndex >= results.length) newIndex = 0;
+    
+    current.classList.remove('selected');
+  }
+  
+  results[newIndex].classList.add('selected');
+}
+
+async function openFileFromPalette(file) {
+  const cmdPalette = document.getElementById("command-palette");
+  cmdPalette.classList.add("hidden");
+  
+  try {
+    await fileExplorer.openFileByPath(file.path);
+  } catch (err) {
+    console.error("Failed to open file:", err);
+    showNotification('Failed to open file', 'error');
+  }
+}
+
+function executeCommand(cmd) {
+  const cmdPalette = document.getElementById("command-palette");
+  cmdPalette.classList.add("hidden");
+  
+  try {
+    cmd.action();
+  } catch (err) {
+    console.error("Failed to execute command:", err);
+    showNotification('Failed to execute command', 'error');
+  }
+}
+
+// Initialize terminal
+function initTerminal() {
+  terminalInstance = new Terminal(document.getElementById("terminal"));
+  
+  // Set up close button
+  const closeButton = document.getElementById("close-terminal-button");
+  if (closeButton) {
+    closeButton.addEventListener("click", () => {
+      terminalInstance.hide();
+    });
+  }
+  
+  // Set working directory when project is opened
+  document.addEventListener('folder-opened', (e) => {
+    if (terminalInstance && e.detail.path) {
+      terminalInstance.setWorkingDirectory(e.detail.path);
+    }
+  });
+}
+
+// Initialize settings watcher
+function initSettingsWatcher() {
+  // Check for settings changes every 2 seconds
+  settingsWatcher = setInterval(async () => {
+    try {
+      const filePath = await getSettingsFilePath();
+      const exists = await window.__TAURI__.core.invoke("file_exists", { filePath });
+      
+      if (exists) {
+        const content = await window.__TAURI__.core.invoke("read_text_file", { filePath });
+        const loadedSettings = JSON.parse(content);
+        
+        // Check if settings have changed
+        if (JSON.stringify(window.settings) !== JSON.stringify(loadedSettings)) {
+          // Settings changed, update and apply them
+          const oldSettings = { ...window.settings };
+          window.settings = { ...window.settings, ...loadedSettings };
+          
+          applySettingsChanges(oldSettings, window.settings);
+        }
+      }
+    } catch (err) {
+      // Silently fail - settings file might not exist yet or be invalid
+    }
+  }, 2000);
+}
+
+// Apply settings changes to the UI
+function applySettingsChanges(oldSettings, newSettings) {
+  // Apply theme changes
+  if (oldSettings.theme !== newSettings.theme) {
+    applyTheme(newSettings.theme);
+  }
+  
+  // Apply font size changes to Monaco Editor
+  if (oldSettings.fontSize !== newSettings.fontSize && editorInstance) {
+    editorInstance.editor?.updateOptions({
+      fontSize: newSettings.fontSize
+    });
+  }
+  
+  // Apply tab size changes to Monaco Editor
+  if (oldSettings.tabSize !== newSettings.tabSize && editorInstance) {
+    editorInstance.editor?.updateOptions({
+      tabSize: newSettings.tabSize
+    });
+  }
+  
+  // Update opened settings tab if it exists
+  const settingsTab = openedFiles.find(file => file.id === 'settings');
+  if (settingsTab) {
+    settingsTab.content = JSON.stringify(newSettings, null, 2);
+    if (currentFileId === 'settings' && editorInstance) {
+      editorInstance.setContent(settingsTab.content);
+    }
+  }
+  
+  console.log('Settings applied:', newSettings);
+}
+
+// Apply theme to the application
+function applyTheme(theme) {
+  const root = document.documentElement;
+  
+  if (theme === 'dark') {
+    root.style.setProperty('--bg-color', '#1e1e1e');
+    root.style.setProperty('--text-color', '#d4d4d4');
+    root.style.setProperty('--sidebar-bg', '#252526');
+    root.style.setProperty('--border-color', '#464647');
+    root.style.setProperty('--button-bg', '#0e639c');
+    root.style.setProperty('--button-hover-bg', '#094771');
+    root.style.setProperty('--input-bg', '#3c3c3c');
+    root.style.setProperty('--active-tab-bg', '#1e1e1e');
+    root.style.setProperty('--inactive-tab-bg', '#2d2d30');
+  } else if (theme === 'light') {
+    root.style.setProperty('--bg-color', '#ffffff');
+    root.style.setProperty('--text-color', '#000000');
+    root.style.setProperty('--sidebar-bg', '#f3f3f3');
+    root.style.setProperty('--border-color', '#cccccc');
+    root.style.setProperty('--button-bg', '#0078d4');
+    root.style.setProperty('--button-hover-bg', '#106ebe');
+    root.style.setProperty('--input-bg', '#ffffff');
+    root.style.setProperty('--active-tab-bg', '#ffffff');
+    root.style.setProperty('--inactive-tab-bg', '#f3f3f3');
+  }
+  
+  // Update Monaco Editor theme
+  if (editorInstance && editorInstance.editor) {
+    const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs';
+    monaco.editor.setTheme(monacoTheme);
+  }
+}
+
+// Initialize draggable panes
+function initDraggablePanes() {
+  draggablePanes = new DraggablePanes();
+  
+  // Add reset pane sizes command
+  availableCommands.push({
+    id: 'reset-pane-sizes', 
+    name: 'Reset Pane Sizes', 
+    action: () => draggablePanes.resetPaneSizes()
   });
 }

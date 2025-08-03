@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "identifier": "my-code-editor",
   "build": {
-    "frontendDist": "../src"
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:3000"
   },
   "app": {
     "withGlobalTauri": true,
@@ -35,10 +36,5 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  },
-  "plugins": {
-    "fs": {
-      "requireLiteralLeadingDot": false
-    }
   }
 }

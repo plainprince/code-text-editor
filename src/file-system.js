@@ -8,29 +8,28 @@ function generateId() {
 // Read file content
 async function readFile(filePath) {
   try {
-    return await window.__TAURI__.core.invoke("get_file_content", { filePath });
+    return await window.__TAURI__.core.invoke("read_text_file", { filePath });
   } catch (error) {
     console.error("Failed to read file:", error);
-    throw error;
+    throw new Error(error);
   }
 }
 
 // Write file content
 async function writeFile(filePath, content) {
   try {
-    const result = await window.__TAURI__.core.invoke("write_file", { filePath, content });
-    return result === "OK";
+    await window.__TAURI__.core.invoke("write_text_file", { filePath, content });
+    return true;
   } catch (error) {
     console.error("Failed to write file:", error);
-    throw error;
+    throw new Error(error);
   }
 }
 
 // Read directory contents
 async function readDirectory(folderPath) {
   try {
-    const message = await window.__TAURI__.core.invoke("open_folder", { folderPath });
-    const files = JSON.parse(message.replaceAll('\\', '/').replaceAll('//', '/'));
+    const files = await window.__TAURI__.core.invoke("read_directory", { dirPath: folderPath });
     
     const entries = [];
     const folders = [];
@@ -41,7 +40,8 @@ async function readDirectory(folderPath) {
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const id = generateId();
+      // Use path as ID to ensure consistency
+      const id = btoa(file.path).replace(/[^a-zA-Z0-9]/g, '');
       const entry = {
         id,
         kind: file.kind,
@@ -63,7 +63,27 @@ async function readDirectory(folderPath) {
     return [...folders, ...entries];
   } catch (error) {
     console.error("Failed to read directory:", error);
-    throw error;
+    throw new Error(error);
+  }
+}
+
+// Check if file exists
+async function fileExists(filePath) {
+  try {
+    return await window.__TAURI__.core.invoke("file_exists", { filePath });
+  } catch (error) {
+    console.error("Failed to check file existence:", error);
+    return false;
+  }
+}
+
+// Check if path is directory
+async function isDirectory(path) {
+  try {
+    return await window.__TAURI__.core.invoke("is_directory", { path });
+  } catch (error) {
+    console.error("Failed to check if directory:", error);
+    return false;
   }
 }
 
@@ -79,4 +99,14 @@ function saveFileObject(id, fileObject) {
   window.fileObjects[id] = fileObject;
 }
 
-export { readFile, writeFile, readDirectory, getFileObject, saveFileObject };
+// Get all files in workspace
+async function getWorkspaceFiles(workspacePath) {
+  try {
+    return await window.__TAURI__.core.invoke("get_workspace_files", { workspacePath });
+  } catch (error) {
+    console.error("Failed to get workspace files:", error);
+    throw new Error(error);
+  }
+}
+
+export { readFile, writeFile, readDirectory, fileExists, isDirectory, getFileObject, saveFileObject, getWorkspaceFiles };

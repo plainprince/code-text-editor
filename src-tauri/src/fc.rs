@@ -75,13 +75,13 @@ pub fn write_file(path: &str, content: &str) -> String {
     let file_path = Path::new(path);
     let result = match fs::write(file_path, content) {
         Ok(()) => String::from("OK"),
-        Err(_err) => String::from("ERROR")
+        Err(_err) => String::from("ERROR"),
     };
 
     result
 }
 
-pub fn create_directory(path: &str) -> Result<()>{
+pub fn create_directory(path: &str) -> Result<()> {
     let dir_path = Path::new(path);
     let _ = fs::create_dir(dir_path);
     Ok(())
@@ -93,7 +93,7 @@ pub fn remove_file(path: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn remove_folder(path: &str) -> Result<()>{ 
+pub fn remove_folder(path: &str) -> Result<()> {
     let folder_path = Path::new(path);
     let _ = fs::remove_dir_all(folder_path);
     Ok(())
