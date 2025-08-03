@@ -53,7 +53,7 @@ function setLeftPanel(panel) {
   const panels = sidebar.querySelectorAll("[id$='-panel']");
   panels.forEach(p => p.style.display = 'none');
 
-  if (currentLeftPanel === panel) {
+      if (currentLeftPanel === panel && panel !== 'project-panel') {
     // If the same panel is clicked, toggle it off
     sidebar.style.display = "none";
     currentLeftPanel = null;
@@ -271,23 +271,43 @@ async function saveCurrentFile() {
 }
 
 // Settings management
+const SETTINGS_FILE = 'settings.json';
+const BASE = window.__TAURI__.fs.BaseDirectory.AppConfig;
+
 async function loadSettings() {
   try {
-    // Try to load settings from file
-    const content = await window.__TAURI__.fs.readTextFile('settings.json');
-    const loadedSettings = JSON.parse(content);
+    const { exists, readTextFile } = window.__TAURI__.fs;
     
-    // Merge with default settings
+    if (!(await exists(SETTINGS_FILE, { baseDir: BASE }))) {
+      // File doesn't exist, create it with default settings
+      await saveSettings();
+      return;
+    }
+    
+    const file = await readTextFile(SETTINGS_FILE, { baseDir: BASE });
+    const loadedSettings = JSON.parse(file);
     window.settings = { ...window.settings, ...loadedSettings };
   } catch (err) {
-    // If settings file doesn't exist, create it
-    saveSettings();
+    console.error('Fehler beim Laden der Settings:', err);
+    // If there's any error, try to create the file with default settings
+    await saveSettings();
   }
 }
 
 async function saveSettings() {
   try {
-    await window.__TAURI__.fs.writeTextFile('settings.json', JSON.stringify(window.settings, null, 2));
+    const { writeTextFile, createDir, exists } = window.__TAURI__.fs;
+    
+    // Ensure the config directory exists
+    try {
+      await exists("", { baseDir: BASE });
+    } catch (e) {
+      // Directory doesn't exist, create it
+      await createDir("", { baseDir: BASE, recursive: true });
+    }
+    
+    const txt = JSON.stringify(window.settings, null, 2);
+    await writeTextFile(SETTINGS_FILE, txt, { baseDir: BASE });
   } catch (err) {
     console.error("Failed to save settings:", err);
   }
@@ -295,15 +315,12 @@ async function saveSettings() {
 
 async function openSettings() {
   try {
-    // Create settings file if it doesn't exist
-    try {
-      await window.__TAURI__.fs.readTextFile('settings.json');
-    } catch (err) {
-      await window.__TAURI__.fs.writeTextFile('settings.json', JSON.stringify(window.settings, null, 2));
-    }
+    const { readTextFile } = window.__TAURI__.fs;
     
-    // Open settings file
-    const content = await window.__TAURI__.fs.readTextFile('settings.json');
+    // Ensure settings file exists before opening
+    await loadSettings();
+    
+    const content = await readTextFile(SETTINGS_FILE, { baseDir: BASE });
     
     // Create a virtual file for the editor
     const settingsFile = {
@@ -313,20 +330,14 @@ async function openSettings() {
       content
     };
     
-    // Add to opened files if not already open
     const existingTab = openedFiles.find(file => file.id === 'settings');
     if (!existingTab) {
       openedFiles.push(settingsFile);
     }
     
-    // Set as current file
     currentFileId = 'settings';
-    
-    // Update UI
     updateTabs();
     updateEditor('settings', content);
-    
-    // Update filename in toolbar
     document.getElementById("editor-filename").textContent = 'settings.json';
   } catch (err) {
     console.error("Failed to open settings:", err);

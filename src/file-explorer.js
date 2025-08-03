@@ -76,6 +76,10 @@ class FileExplorer {
     li.dataset.id = file.id;
     li.dataset.path = file.path;
     
+    // Create a container for the file/folder info
+    const itemContainer = document.createElement('div');
+    itemContainer.className = 'file-item-content';
+    
     const iconSpan = document.createElement('span');
     iconSpan.className = 'file-icon';
     
@@ -87,21 +91,52 @@ class FileExplorer {
       iconSpan.innerHTML = window.settings.icons.folder;
       li.classList.add('folder');
       
-      li.addEventListener('click', (e) => {
+      itemContainer.addEventListener('click', async (e) => {
         e.stopPropagation();
-        li.classList.toggle('expanded');
+        
+        if (li.classList.contains('expanded')) {
+          // Collapse folder
+          li.classList.remove('expanded');
+          const subList = li.querySelector('ul');
+          if (subList) {
+            subList.remove();
+          }
+        } else {
+          // Expand folder
+          li.classList.add('expanded');
+          try {
+            const folderPath = file.path.endsWith('/') ? file.path : file.path + '/';
+            const subFiles = await readDirectory(folderPath);
+            
+            if (subFiles && subFiles.length > 0) {
+              const subUl = document.createElement('ul');
+              subUl.className = 'file-tree';
+              
+              subFiles.forEach(subFile => {
+                const subLi = this.createFileTreeItem(subFile);
+                subUl.appendChild(subLi);
+              });
+              
+              li.appendChild(subUl);
+            }
+          } catch (error) {
+            console.error('Failed to expand folder:', error);
+            li.classList.remove('expanded');
+          }
+        }
       });
     } else {
       iconSpan.innerHTML = this.getFileIcon(file.name);
       li.classList.add('file');
       
-      li.addEventListener('click', () => {
+      itemContainer.addEventListener('click', () => {
         this.openFile(file.id);
       });
     }
     
-    li.appendChild(iconSpan);
-    li.appendChild(nameSpan);
+    itemContainer.appendChild(iconSpan);
+    itemContainer.appendChild(nameSpan);
+    li.appendChild(itemContainer);
     
     return li;
   }
