@@ -21,10 +21,7 @@ class FileExplorer {
   // Open a folder and load its contents
   async openFolder() {
     try {
-      // Import dialog plugin dynamically
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      
-      const selected = await open({
+      const selected = await window.__TAURI__.dialog.open({
         directory: true,
         multiple: false,
         title: "Select Project Folder"

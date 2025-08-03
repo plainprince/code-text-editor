@@ -274,8 +274,7 @@ async function saveCurrentFile() {
 async function loadSettings() {
   try {
     // Try to load settings from file
-    const { readTextFile } = await import('@tauri-apps/plugin-fs');
-    const content = await readTextFile('settings.json');
+    const content = await window.__TAURI__.fs.readTextFile('settings.json');
     const loadedSettings = JSON.parse(content);
     
     // Merge with default settings
@@ -288,8 +287,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   try {
-    const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-    await writeTextFile('settings.json', JSON.stringify(window.settings, null, 2));
+    await window.__TAURI__.fs.writeTextFile('settings.json', JSON.stringify(window.settings, null, 2));
   } catch (err) {
     console.error("Failed to save settings:", err);
   }
@@ -297,17 +295,15 @@ async function saveSettings() {
 
 async function openSettings() {
   try {
-    const { readTextFile, writeTextFile } = await import('@tauri-apps/plugin-fs');
-    
     // Create settings file if it doesn't exist
     try {
-      await readTextFile('settings.json');
+      await window.__TAURI__.fs.readTextFile('settings.json');
     } catch (err) {
-      await writeTextFile('settings.json', JSON.stringify(window.settings, null, 2));
+      await window.__TAURI__.fs.writeTextFile('settings.json', JSON.stringify(window.settings, null, 2));
     }
     
     // Open settings file
-    const content = await readTextFile('settings.json');
+    const content = await window.__TAURI__.fs.readTextFile('settings.json');
     
     // Create a virtual file for the editor
     const settingsFile = {
