@@ -41,7 +41,7 @@ pub fn read_directory(dir_path: &str) -> String {
 
         let filename = match path_unwrap.file_name().into_string() {
             Ok(str) => str,
-            Err(error) => String::from("ERROR"),
+            Err(_) => String::from("ERROR"),
         };
 
         let file_path = dir_path.to_owned() + &filename;
@@ -83,18 +83,18 @@ pub fn write_file(path: &str, content: &str) -> String {
 
 pub fn create_directory(path: &str) -> Result<()>{
     let dir_path = Path::new(path);
-    fs::create_dir(dir_path);
+    let _ = fs::create_dir(dir_path);
     Ok(())
 }
 
 pub fn remove_file(path: &str) -> Result<()> {
     let file_path = Path::new(path);
-    fs::remove_file(file_path);
+    let _ = fs::remove_file(file_path);
     Ok(())
 }
 
 pub fn remove_folder(path: &str) -> Result<()>{ 
     let folder_path = Path::new(path);
-    fs::remove_dir_all(folder_path);
+    let _ = fs::remove_dir_all(folder_path);
     Ok(())
 }

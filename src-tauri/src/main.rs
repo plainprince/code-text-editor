@@ -29,9 +29,35 @@ fn write_file(file_path: &str, content: &str) -> String {
     String::from("OK")
 }
 
+#[tauri::command]
+fn create_directory(dir_path: &str) -> Result<(), String> {
+    fc::create_directory(dir_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_file(file_path: &str) -> Result<(), String> {
+    fc::remove_file(file_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_folder(folder_path: &str) -> Result<(), String> {
+    fc::remove_folder(folder_path).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet, open_folder, get_file_content, write_file])
+        .invoke_handler(tauri::generate_handler![
+            greet, 
+            open_folder, 
+            get_file_content, 
+            write_file,
+            create_directory,
+            remove_file,
+            remove_folder
+        ])
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
