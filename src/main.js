@@ -28,6 +28,9 @@ let diagnosticsManager = null;
 let draggablePanes = null;
 let workspaceFiles = [];
 let settingsWatcher = null;
+
+// Make Tauri available globally for modules that have import issues
+window.tauri = window.__TAURI__;
 let availableCommands = [
   { id: 'open-settings', name: 'Open Settings', action: () => openSettings() },
   { id: 'open-project', name: 'Open Project', action: () => document.getElementById("open-project-button").click() },

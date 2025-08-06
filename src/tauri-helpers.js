@@ -2,10 +2,10 @@
 
 // Ensure Tauri is available
 function ensureTauri() {
-  if (!window.__TAURI__) {
+  if (!window.tauri) {
     throw new Error('Tauri is not available');
   }
-  return window.__TAURI__;
+  return window.tauri;
 }
 
 /**
