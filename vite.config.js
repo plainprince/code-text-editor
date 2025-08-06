@@ -16,7 +16,11 @@ export default defineConfig({
         manualChunks: {
           monaco: ['monaco-editor']
         }
-      }
+      },
+      external: []
+    },
+    dynamicImportVarsOptions: {
+      warnOnError: false
     }
   },
   server: {
@@ -26,6 +30,13 @@ export default defineConfig({
   clearScreen: false,
   envPrefix: ['VITE_', 'TAURI_'],
   optimizeDeps: {
-    include: ['monaco-editor']
+    include: ['monaco-editor', '@xterm/xterm', '@xterm/addon-fit'],
+    exclude: []
+  },
+  define: {
+    global: 'globalThis'
+  },
+  worker: {
+    format: 'es'
   }
 });

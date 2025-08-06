@@ -28,7 +28,7 @@ class DraggablePanes {
     // Create horizontal resizer between main and sidebar-right  
     this.createHorizontalResizer('main', 'sidebar-right', 'right-resizer');
     
-    // Create vertical resizer for terminal (between editor and terminal)
+    // Create vertical resizer for terminal (between main and terminal)
     this.createTerminalResizer();
   }
   
@@ -51,20 +51,20 @@ class DraggablePanes {
   }
   
   createTerminalResizer() {
-    const main = document.getElementById('main');
+    const bottomPanelsContainer = document.getElementById('bottom-panels-container');
     const terminal = document.getElementById('terminal');
     
-    if (!main || !terminal) return;
+    if (!bottomPanelsContainer || !terminal) return;
     
     const resizer = document.createElement('div');
     resizer.id = 'terminal-resizer';
     resizer.className = 'pane-resizer vertical';
-    resizer.dataset.topPane = 'editor-area';
+    resizer.dataset.topPane = 'main';
     resizer.dataset.bottomPane = 'terminal';
     resizer.dataset.direction = 'vertical';
     
-    // Insert before terminal
-    main.insertBefore(resizer, terminal);
+    // Insert before terminal in the bottom panels container
+    bottomPanelsContainer.insertBefore(resizer, terminal);
   }
   
   setupEventListeners() {
@@ -108,8 +108,9 @@ class DraggablePanes {
     const rightPaneId = this.currentResizer.dataset.rightPane;
     const leftPane = document.getElementById(leftPaneId);
     const rightPane = document.getElementById(rightPaneId);
+    const mainRow = document.getElementById('main-row');
     
-    if (!leftPane || !rightPane) return;
+    if (!leftPane || !rightPane || !mainRow) return;
     
     const leftRect = leftPane.getBoundingClientRect();
     const rightRect = rightPane.getBoundingClientRect();
@@ -119,27 +120,28 @@ class DraggablePanes {
     
     // Enforce minimum and maximum sizes
     newLeftWidth = Math.max(this.minPaneSize, Math.min(newLeftWidth, this.maxPaneSize));
-    newRightWidth = Math.max(this.minPaneSize, newRightWidth);
     
-    // Apply new widths
-    leftPane.style.width = `${newLeftWidth}px`;
-    leftPane.style.flexBasis = `${newLeftWidth}px`;
-    leftPane.style.flexShrink = '0';
-    leftPane.style.flexGrow = '0';
-    
-    if (rightPaneId !== 'main') {
-      rightPane.style.width = `${newRightWidth}px`;
-      rightPane.style.flexBasis = `${newRightWidth}px`;
-      rightPane.style.flexShrink = '0';
-      rightPane.style.flexGrow = '0';
+    if (rightPaneId === 'sidebar-right') {
+      newRightWidth = Math.max(this.minPaneSize, newRightWidth);
+      
+      // Update grid template columns for main-row
+      const isRightSidebarVisible = mainRow.classList.contains('right-sidebar-visible');
+      if (isRightSidebarVisible) {
+        mainRow.style.gridTemplateColumns = `${newLeftWidth}px 1fr ${newRightWidth}px`;
+      }
+      
+      this.savePaneSize(rightPaneId, newRightWidth);
+    } else {
+      // For left sidebar only
+      const currentColumns = getComputedStyle(mainRow).gridTemplateColumns.split(' ');
+      if (currentColumns.length >= 3) {
+        const rightWidth = currentColumns[2];
+        mainRow.style.gridTemplateColumns = `${newLeftWidth}px 1fr ${rightWidth}`;
+      }
     }
     
     this.startX = e.clientX;
     this.savePaneSize(leftPaneId, newLeftWidth);
-    
-    if (rightPaneId !== 'main') {
-      this.savePaneSize(rightPaneId, newRightWidth);
-    }
   }
   
   handleVerticalResize(e) {
@@ -223,45 +225,90 @@ class DraggablePanes {
   loadPaneSizes() {
     if (!window.settings?.paneSizes) return;
     
-    Object.entries(window.settings.paneSizes).forEach(([paneId, size]) => {
-      const pane = document.getElementById(paneId);
-      if (!pane || !size) return;
-      
-      if (paneId === 'terminal') {
-        pane.style.height = `${size}px`;
-        pane.style.flexBasis = `${size}px`;
-      } else {
-        pane.style.width = `${size}px`;
-        pane.style.flexBasis = `${size}px`;
-      }
-      
-      pane.style.flexShrink = '0';
-      pane.style.flexGrow = paneId === 'main' ? '1' : '0';
-    });
+    const mainRow = document.getElementById('main-row');
+    if (!mainRow) return;
+    
+    const leftWidth = window.settings.paneSizes['sidebar-left'] || 250;
+    const rightWidth = window.settings.paneSizes['sidebar-right'] || 250;
+    const terminalHeight = window.settings.paneSizes['terminal'] || 200;
+    
+    // Update grid template columns based on current visibility
+    const isRightSidebarVisible = mainRow.classList.contains('right-sidebar-visible');
+    if (isRightSidebarVisible) {
+      mainRow.style.gridTemplateColumns = `${leftWidth}px 1fr ${rightWidth}px`;
+    } else {
+      mainRow.style.gridTemplateColumns = `${leftWidth}px 1fr 0px`;
+    }
+    
+    // Set terminal height if visible
+    const terminal = document.getElementById('terminal');
+    if (terminal && terminal.style.display !== 'none') {
+      terminal.style.height = `${terminalHeight}px`;
+      terminal.style.flexBasis = `${terminalHeight}px`;
+      terminal.style.flexShrink = '0';
+      terminal.style.flexGrow = '0';
+    }
   }
   
   resetPaneSizes() {
-    // Reset to default sizes
-    const leftSidebar = document.getElementById('sidebar-left');
-    const rightSidebar = document.getElementById('sidebar-right');
+    const mainRow = document.getElementById('main-row');
     const terminal = document.getElementById('terminal');
     
-    if (leftSidebar) {
-      leftSidebar.style.width = '300px';
-      leftSidebar.style.flexBasis = '300px';
-      this.savePaneSize('sidebar-left', 300);
+    if (!mainRow) return;
+    
+    // Reset to default sizes
+    const defaultLeftWidth = 250;
+    const defaultRightWidth = 250;
+    const defaultTerminalHeight = 200;
+    
+    // Update grid template columns
+    const isRightSidebarVisible = mainRow.classList.contains('right-sidebar-visible');
+    if (isRightSidebarVisible) {
+      mainRow.style.gridTemplateColumns = `${defaultLeftWidth}px 1fr ${defaultRightWidth}px`;
+    } else {
+      mainRow.style.gridTemplateColumns = `${defaultLeftWidth}px 1fr 0px`;
     }
     
-    if (rightSidebar) {
-      rightSidebar.style.width = '300px';
-      rightSidebar.style.flexBasis = '300px';
-      this.savePaneSize('sidebar-right', 300);
+    // Reset terminal height
+    if (terminal && terminal.style.display !== 'none') {
+      terminal.style.height = `${defaultTerminalHeight}px`;
+      terminal.style.flexBasis = `${defaultTerminalHeight}px`;
+      terminal.style.flexShrink = '0';
+      terminal.style.flexGrow = '0';
     }
     
-    if (terminal) {
-      terminal.style.height = '200px';
-      terminal.style.flexBasis = '200px';
-      this.savePaneSize('terminal', 200);
+    // Save the reset sizes
+    this.savePaneSize('sidebar-left', defaultLeftWidth);
+    this.savePaneSize('sidebar-right', defaultRightWidth);
+    this.savePaneSize('terminal', defaultTerminalHeight);
+  }
+  
+  // Method to update grid layout when panels are toggled
+  updateLayout() {
+    const mainRow = document.getElementById('main-row');
+    if (!mainRow) return;
+    
+    const leftWidth = window.settings?.paneSizes?.['sidebar-left'] || 250;
+    const rightWidth = window.settings?.paneSizes?.['sidebar-right'] || 250;
+    
+    const isRightSidebarVisible = mainRow.classList.contains('right-sidebar-visible');
+    if (isRightSidebarVisible) {
+      mainRow.style.gridTemplateColumns = `${leftWidth}px 1fr ${rightWidth}px`;
+    } else {
+      mainRow.style.gridTemplateColumns = `${leftWidth}px 1fr 0px`;
+    }
+  }
+  
+  // Method to handle terminal visibility changes
+  updateTerminalLayout() {
+    const terminal = document.getElementById('terminal');
+    const terminalHeight = window.settings?.paneSizes?.['terminal'] || 200;
+    
+    if (terminal && terminal.style.display !== 'none') {
+      terminal.style.height = `${terminalHeight}px`;
+      terminal.style.flexBasis = `${terminalHeight}px`;
+      terminal.style.flexShrink = '0';
+      terminal.style.flexGrow = '0';
     }
   }
 }

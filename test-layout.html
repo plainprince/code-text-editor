@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Layout Test - Bottom Panels Between Sidebars</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .test-results {
+            background: white;
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #007bff; }
+    </style>
+</head>
+<body>
+    <h1>Layout Change Verification</h1>
+    
+    <div class="test-results">
+        <h2>Changes Made:</h2>
+        <ul>
+            <li class="success">✅ Moved bottom panels (terminal/diagnostics) out of #main div</li>
+            <li class="success">✅ Created new #bottom-panels-container between sidebars</li>
+            <li class="success">✅ Updated #main-row to use CSS Grid layout</li>
+            <li class="success">✅ Updated grid-template-areas for proper positioning</li>
+            <li class="success">✅ Added responsive grid columns (250px 1fr 0px/250px)</li>
+            <li class="success">✅ Updated JavaScript to control grid visibility classes</li>
+            <li class="success">✅ Bottom container now collapses when no panels are active</li>
+        </ul>
+    </div>
+
+    <div class="test-results">
+        <h2>Expected Behavior:</h2>
+        <ol>
+            <li class="info">Left sidebar: Always 250px wide, shows project/git/outline panels</li>
+            <li class="info">Main content: Takes remaining space between sidebars</li>
+            <li class="info">Bottom panels: Only span width between sidebars (not full screen)</li>
+            <li class="info">Right sidebar: 0px when hidden, 250px when AI panel is active</li>
+            <li class="info">Terminal/Diagnostics: Position below main content, between sidebars</li>
+        </ol>
+    </div>
+
+    <div class="test-results">
+        <h2>Testing Instructions:</h2>
+        <ol>
+            <li>Open the application at <a href="http://localhost:5174" target="_blank">http://localhost:5174</a></li>
+            <li>Click the "Terminal" button in the status bar</li>
+            <li>Verify terminal appears between the sidebars (not spanning full width)</li>
+            <li>Click the "Diagnostics" button in the status bar</li>
+            <li>Verify diagnostics panel appears between sidebars</li>
+            <li>Click the "AI" button to show right sidebar</li>
+            <li>Verify bottom panels still span only between left sidebar and right sidebar</li>
+            <li>Click "AI" again to hide right sidebar</li>
+            <li>Verify bottom panels again span from left sidebar to right edge</li>
+        </ol>
+    </div>
+
+    <div class="test-results">
+        <h2>Key Files Modified:</h2>
+        <ul>
+            <li><strong>src/index.html</strong>: Moved bottom panels to new container</li>
+            <li><strong>src/styles.css</strong>: Updated layout to CSS Grid, added responsive classes</li>
+            <li><strong>src/main.js</strong>: Updated panel functions to control grid layout classes</li>
+        </ul>
+    </div>
+</body>
+</html>

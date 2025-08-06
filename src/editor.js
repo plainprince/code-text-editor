@@ -74,6 +74,14 @@ class Editor {
       if (this.currentFile) {
         this.currentFile.content = this.content;
       }
+      
+      // Dispatch content change event for diagnostics
+      document.dispatchEvent(new CustomEvent('editor-content-changed', {
+        detail: {
+          filePath: this.currentFile?.path,
+          content: this.content
+        }
+      }));
     });
     
     // Set initial content
@@ -82,9 +90,11 @@ class Editor {
   
   // Set the content of the editor
   setContent(content) {
-    this.content = content;
+    // Ensure content is a valid string
+    const validContent = content != null ? String(content) : '';
+    this.content = validContent;
     if (this.editor) {
-      this.editor.setValue(content);
+      this.editor.setValue(validContent);
     }
   }
   
@@ -99,7 +109,6 @@ class Editor {
   // Set the current file
   setCurrentFile(file) {
     this.currentFile = file;
-    this.setContent(file.content);
     
     // Set language based on file extension
     if (this.editor) {
