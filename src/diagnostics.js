@@ -1,17 +1,39 @@
 // diagnostics.js - Project diagnostics via LSP servers
 
+import { readFile } from './file-system.js';
+import { checkCommandExists, startLanguageServer, sendLspRequest } from './tauri-helpers.js';
+import LanguageServerManager from './language-server-manager.js';
+
 class DiagnosticsManager {
   constructor() {
     this.diagnostics = new Map(); // filepath -> diagnostics array
     this.languageServers = new Map(); // file extension -> LSP info
     this.isRefreshing = false;
     this.autoRefreshTimeout = null; // For debouncing auto-refresh
+    this.languageServerManager = new LanguageServerManager();
+    this.activeLanguageServers = new Map(); // language -> process info
+    this.debugMode = true; // Enable debug logging
     this.init();
   }
 
   init() {
     this.setupEventListeners();
     this.setupLanguageServers();
+    this.log('DiagnosticsManager initialized');
+    
+    // Expose to global scope for debugging
+    window.languageServerManager = this.languageServerManager;
+    window.diagnosticsManager = this;
+  }
+  
+  log(message, ...args) {
+    if (this.debugMode) {
+      console.log('[DiagnosticsManager]', message, ...args);
+    }
+  }
+  
+  error(message, ...args) {
+    console.error('[DiagnosticsManager ERROR]', message, ...args);
   }
 
   setupEventListeners() {
@@ -108,14 +130,22 @@ class DiagnosticsManager {
   }
 
   async refresh(filePath = null, forceRefresh = false) {
-    if (this.isRefreshing) return;
+    if (this.isRefreshing) {
+      this.log('Refresh already in progress, skipping');
+      return;
+    }
 
     // Get current file if not specified
     if (!filePath) {
       filePath = window.currentFilePath || null;
     }
 
+    this.log('Refreshing diagnostics for file:', filePath);
+    this.log('window.currentFilePath:', window.currentFilePath);
+    this.log('Available window properties:', Object.keys(window).filter(k => k.includes('File') || k.includes('file') || k.includes('current')));
+
     if (!filePath) {
+      this.log('No file open, showing empty diagnostics');
       this.updateStatus('No file open');
       this.renderEmptyDiagnostics();
       return;
@@ -125,9 +155,14 @@ class DiagnosticsManager {
     this.updateStatus('Checking language server...');
 
     try {
-      // Get file extension
+      // Get file extension and language
       const ext = this.getFileExtension(filePath);
-      if (!ext) {
+      const language = this.getLanguageFromExtension(ext);
+      
+      this.log('File extension:', ext, 'Language:', language);
+      
+      if (!ext || !language) {
+        this.log('Unsupported file type:', ext);
         this.updateStatus('Unsupported file type');
         this.renderEmptyDiagnostics();
         return;
@@ -136,15 +171,21 @@ class DiagnosticsManager {
       // Check if language server is available for this file type
       const serverInfo = this.getLanguageServerForExtension(ext);
       if (!serverInfo) {
+        this.log('No language server configured for extension:', ext);
         this.updateStatus('No language server configured');
         this.renderEmptyDiagnostics();
         return;
       }
 
+      this.log('Found server info:', serverInfo);
+
       // Check server availability (with optional force refresh)
       const isAvailable = await this.checkServerAvailability(serverInfo, forceRefresh);
       
+      this.log('Server availability:', isAvailable);
+      
       if (!isAvailable) {
+        this.log('Language server not available, showing install instructions');
         this.showInstallInstructionsForFile(serverInfo, ext);
         return;
       }
@@ -152,16 +193,18 @@ class DiagnosticsManager {
       this.updateStatus('Collecting diagnostics...');
       
       // Get diagnostics for current file only
-      await this.collectFileDiagnostics(filePath, serverInfo);
+      await this.collectFileDiagnostics(filePath, serverInfo, language);
       
       const count = this.getFileDiagnosticsCount(filePath);
+      this.log('Final diagnostics count for file:', count);
+      
       if (count === 0) {
         this.updateStatus('Ready (no issues found)');
       } else {
         this.updateStatus(`Ready (${count} issues)`);
       }
     } catch (error) {
-      console.error('Failed to refresh diagnostics:', error);
+      this.error('Failed to refresh diagnostics:', error);
       this.updateStatus('Error collecting diagnostics');
     } finally {
       this.isRefreshing = false;
@@ -195,6 +238,39 @@ class DiagnosticsManager {
     const match = filePath.match(/\.([^.]+)$/);
     return match ? match[1] : null;
   }
+  
+  getLanguageFromExtension(ext) {
+    const languageMap = {
+      'js': 'javascript',
+      'jsx': 'javascriptreact', 
+      'ts': 'typescript',
+      'tsx': 'typescriptreact',
+      'py': 'python',
+      'rs': 'rust',
+      'go': 'go',
+      'java': 'java',
+      'c': 'c',
+      'cpp': 'cpp',
+      'cc': 'cpp',
+      'cxx': 'cpp',
+      'cs': 'csharp',
+      'php': 'php',
+      'rb': 'ruby',
+      'vue': 'vue',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'less': 'less',
+      'json': 'json',
+      'yaml': 'yaml',
+      'yml': 'yaml',
+      'xml': 'xml',
+      'sh': 'shellscript',
+      'bash': 'bash'
+    };
+    
+    return languageMap[ext] || null;
+  }
 
   getLanguageServerForExtension(ext) {
     return this.languageServers.get(ext) || null;
@@ -212,7 +288,7 @@ class DiagnosticsManager {
 
     // Check server availability
     try {
-      const result = await window.__TAURI__.core.invoke('check_command_exists', { command: serverInfo.command });
+      const result = await checkCommandExists(serverInfo.command);
       this.setCachedServerStatus(cacheKey, result);
       return result;
     } catch (error) {
@@ -265,44 +341,286 @@ class DiagnosticsManager {
   async checkServerAvailable(command) {
     try {
       // Use Tauri to check if command exists
-      const result = await window.__TAURI__.core.invoke('check_command_exists', { command });
+      const result = await checkCommandExists(command);
       return result;
     } catch (error) {
       return false;
     }
   }
 
-  async collectFileDiagnostics(filePath, serverInfo) {
+  async collectFileDiagnostics(filePath, serverInfo, language) {
     // Clear all diagnostics to avoid accumulation when switching files
     this.diagnostics.clear();
     
-    // TODO: Integrate with actual LSP servers via the Rust backend
-    // For now, we'll check if there's a real language server available
-    // and either get real diagnostics or show no diagnostics
+    this.log('Collecting diagnostics for:', { filePath, serverInfo: serverInfo.name, language });
     
     try {
-      // Check if we have a language server manager available for real LSP integration
-      if (window.languageServerManager) {
-        // Try to get real diagnostics from the language server manager
-        const realDiagnostics = await this.getRealDiagnostics(filePath, serverInfo);
+      // Try to get real diagnostics from the language server
+      const realDiagnostics = await this.getRealDiagnostics(filePath, serverInfo, language);
+      
+      this.log('Retrieved real diagnostics:', realDiagnostics.length, 'items');
+      
+      if (realDiagnostics.length > 0) {
         this.diagnostics.set(filePath, realDiagnostics);
       } else {
-        // No real LSP integration available yet - just show empty diagnostics
-        this.diagnostics.set(filePath, []);
+        // No real diagnostics, try fallback
+        this.log('No real diagnostics found, trying fallback');
+        const fallbackDiagnostics = await this.getFallbackDiagnostics(filePath, language);
+        this.log('Fallback diagnostics found:', fallbackDiagnostics.length, 'items');
+        this.diagnostics.set(filePath, fallbackDiagnostics);
       }
     } catch (error) {
-      console.log('LSP integration not ready, showing no diagnostics:', error.message);
-      this.diagnostics.set(filePath, []);
+      this.error('Failed to get real diagnostics, using fallback:', error);
+      
+      // Fallback: try to generate some basic diagnostics using tree-sitter or static analysis
+      const fallbackDiagnostics = await this.getFallbackDiagnostics(filePath, language);
+      this.log('Error fallback diagnostics found:', fallbackDiagnostics.length, 'items');
+      this.diagnostics.set(filePath, fallbackDiagnostics);
     }
 
     this.renderDiagnostics();
   }
   
-  async getRealDiagnostics(filePath, serverInfo) {
-    // Placeholder for real LSP integration
-    // This would send textDocument/publishDiagnostics request to the language server
+  async getRealDiagnostics(filePath, serverInfo, language) {
+    this.log('Getting real diagnostics via LSP for:', { filePath, language });
     
-    // For now, return empty array until full LSP integration is implemented
+    try {
+      // Try to start language server if not already running
+      const processId = await this.ensureLanguageServerRunning(serverInfo, language);
+      
+      if (!processId) {
+        this.log('Could not start language server');
+        return [];
+      }
+      
+      // Read file content
+      const fileContent = await this.readFileContent(filePath);
+      if (!fileContent) {
+        this.log('Could not read file content');
+        return [];
+      }
+      
+      // Send textDocument/didOpen notification
+      await this.sendDidOpenNotification(processId, filePath, language, fileContent);
+      
+      // Request diagnostics
+      const diagnostics = await this.requestDiagnostics(processId, filePath);
+      
+      this.log('LSP diagnostics received:', diagnostics);
+      return diagnostics;
+      
+    } catch (error) {
+      this.error('Failed to get real diagnostics:', error);
+      throw error;
+    }
+  }
+  
+  async getFallbackDiagnostics(filePath, language) {
+    this.log('Using fallback diagnostics for:', { filePath, language });
+    
+    try {
+      // For JavaScript/TypeScript, try some basic syntax checking
+      if (language === 'javascript' || language === 'typescript') {
+        return await this.getJavaScriptFallbackDiagnostics(filePath);
+      }
+      
+      // For other languages, return empty for now
+      return [];
+    } catch (error) {
+      this.error('Fallback diagnostics failed:', error);
+      return [];
+    }
+  }
+  
+  async getJavaScriptFallbackDiagnostics(filePath) {
+    try {
+      const content = await this.readFileContent(filePath);
+      if (!content) {
+        this.log('No file content available for fallback diagnostics');
+        return [];
+      }
+      
+      this.log('Analyzing file content for fallback diagnostics, content length:', content.length);
+      
+      const diagnostics = [];
+      const lines = content.split('\n');
+      
+      // Simple checks for common issues
+      lines.forEach((line, index) => {
+        const lineNumber = index + 1;
+        const trimmedLine = line.trim();
+        
+        // Skip empty lines and comments
+        if (!trimmedLine || trimmedLine.startsWith('//') || trimmedLine.startsWith('/*')) {
+          return;
+        }
+        
+        // Check for console.log (warning)
+        if (line.includes('console.log') || line.includes('console.warn') || line.includes('console.error')) {
+          const match = line.match(/(console\.(log|warn|error))/);
+          if (match) {
+            diagnostics.push({
+              severity: match[2] === 'error' ? 'error' : 'warning',
+              message: `${match[1]} statement found - consider removing in production`,
+              line: lineNumber,
+              character: line.indexOf(match[1]) + 1,
+              source: 'fallback-linter'
+            });
+          }
+        }
+        
+        // Check for debugger statements
+        if (line.includes('debugger')) {
+          diagnostics.push({
+            severity: 'warning',
+            message: 'debugger statement found - should be removed in production',
+            line: lineNumber,
+            character: line.indexOf('debugger') + 1,
+            source: 'fallback-linter'
+          });
+        }
+        
+        // Check for TODO/FIXME comments
+        const todoMatch = line.match(/(TODO|FIXME|HACK|XXX)(.*)/);
+        if (todoMatch) {
+          diagnostics.push({
+            severity: 'info',
+            message: `${todoMatch[1]} comment found: ${todoMatch[2].trim()}`,
+            line: lineNumber,
+            character: line.indexOf(todoMatch[1]) + 1,
+            source: 'fallback-linter'
+          });
+        }
+        
+        // Check for var keyword (suggest let/const instead)
+        const varMatch = line.match(/\bvar\s+(\w+)/);
+        if (varMatch) {
+          diagnostics.push({
+            severity: 'info',
+            message: `Consider using 'let' or 'const' instead of 'var' for '${varMatch[1]}'`,
+            line: lineNumber,
+            character: line.indexOf('var') + 1,
+            source: 'fallback-linter'
+          });
+        }
+        
+        // Check for == instead of ===
+        if (line.includes('==') && !line.includes('===') && !line.includes('!=')) {
+          const match = line.match(/(\w+)\s*==\s*(\w+)/);
+          if (match) {
+            diagnostics.push({
+              severity: 'warning',
+              message: 'Use strict equality (===) instead of loose equality (==)',
+              line: lineNumber,
+              character: line.indexOf('==') + 1,
+              source: 'fallback-linter'
+            });
+          }
+        }
+        
+        // Check for missing semicolons on statements
+        if (trimmedLine && 
+            !trimmedLine.endsWith(';') && 
+            !trimmedLine.endsWith('{') && 
+            !trimmedLine.endsWith('}') && 
+            !trimmedLine.endsWith(',') &&
+            (trimmedLine.includes('=') || 
+             trimmedLine.startsWith('return ') || 
+             trimmedLine.startsWith('throw ') ||
+             trimmedLine.startsWith('break') ||
+             trimmedLine.startsWith('continue'))) {
+          diagnostics.push({
+            severity: 'info',
+            message: 'Missing semicolon',
+            line: lineNumber,
+            character: line.length,
+            source: 'fallback-linter'
+          });
+        }
+      });
+      
+      this.log('Fallback JavaScript diagnostics found:', diagnostics.length, 'issues');
+      return diagnostics;
+      
+    } catch (error) {
+      this.error('JavaScript fallback diagnostics failed:', error);
+      return [];
+    }
+  }
+  
+  async ensureLanguageServerRunning(serverInfo, language) {
+    const existing = this.activeLanguageServers.get(language);
+    if (existing) {
+      this.log('Language server already running for:', language);
+      return existing.processId;
+    }
+    
+    try {
+      this.log('Starting language server:', serverInfo.command, serverInfo.args);
+      
+      const processId = await startLanguageServer(serverInfo.command, serverInfo.args, language);
+      
+      this.activeLanguageServers.set(language, {
+        processId,
+        serverInfo,
+        startTime: Date.now()
+      });
+      
+      this.log('Language server started with process ID:', processId);
+      return processId;
+      
+    } catch (error) {
+      this.error('Failed to start language server:', error);
+      return null;
+    }
+  }
+  
+  async readFileContent(filePath) {
+    this.log('Reading file content for:', filePath);
+    
+    if (!filePath) {
+      this.error('readFileContent called with null/undefined filePath');
+      return null;
+    }
+    
+    try {
+      this.log('Using file-system.js to read file:', filePath);
+      const result = await readFile(filePath);
+      this.log('File read successfully, content length:', result ? result.length : 0);
+      return result;
+    } catch (error) {
+      this.error('Failed to read file content for', filePath, ':', error);
+      return null;
+    }
+  }
+  
+  async sendDidOpenNotification(processId, filePath, language, content) {
+    const notification = {
+      jsonrpc: '2.0',
+      method: 'textDocument/didOpen',
+      params: {
+        textDocument: {
+          uri: `file://${filePath}`,
+          languageId: language,
+          version: 1,
+          text: content
+        }
+      }
+    };
+    
+    try {
+      await sendLspRequest(processId, JSON.stringify(notification));
+    } catch (error) {
+      this.error('Failed to send didOpen notification:', error);
+      throw error;
+    }
+  }
+  
+  async requestDiagnostics(processId, filePath) {
+    // LSP diagnostics are typically sent via publishDiagnostics notifications
+    // For now, we'll return empty array as this requires implementing
+    // a proper LSP client with message handling
+    this.log('Requesting diagnostics (not fully implemented yet)');
     return [];
   }
 
@@ -557,6 +875,91 @@ class DiagnosticsManager {
   clearAllDiagnostics() {
     this.diagnostics.clear();
     this.renderDiagnostics();
+  }
+
+  // Toggle debug mode
+  toggleDebugMode() {
+    this.debugMode = !this.debugMode;
+    this.log('Debug mode toggled:', this.debugMode ? 'ON' : 'OFF');
+    
+    // Update UI to show debug status
+    const debugBtn = document.getElementById('diagnostics-debug-btn');
+    if (debugBtn) {
+      debugBtn.style.backgroundColor = this.debugMode ? '#4CAF50' : '';
+      debugBtn.title = this.debugMode ? 'Debug mode ON - click to disable' : 'Debug mode OFF - click to enable';
+    }
+    
+    // If debug is enabled, show current state
+    if (this.debugMode) {
+      this.log('Current diagnostics state:', {
+        currentFile: window.currentFilePath,
+        diagnosticsCount: this.diagnostics.size,
+        activeLanguageServers: Array.from(this.activeLanguageServers.keys()),
+        isRefreshing: this.isRefreshing
+      });
+    }
+  }
+
+  // Test with sample diagnostics
+  testWithSampleDiagnostics() {
+    this.log('Testing with sample diagnostics');
+    
+    let currentFile = window.currentFilePath;
+    if (!currentFile) {
+      this.log('No current file open, using generic test filename for demo');
+      currentFile = 'test-file.js'; // Generic filename for demo purposes
+    }
+    
+    const sampleDiagnostics = [
+      {
+        severity: 'error',
+        message: 'Test error: Undefined variable "example"',
+        line: 5,
+        character: 10,
+        source: 'test-diagnostics'
+      },
+      {
+        severity: 'warning', 
+        message: 'Test warning: Unused variable "testVar"',
+        line: 12,
+        character: 5,
+        source: 'test-diagnostics'
+      },
+      {
+        severity: 'info',
+        message: 'Test info: Consider using const instead of let',
+        line: 8,
+        character: 1,
+        source: 'test-diagnostics'
+      }
+    ];
+    
+    this.diagnostics.clear();
+    this.diagnostics.set(currentFile, sampleDiagnostics);
+    this.updateStatus(`Ready (${sampleDiagnostics.length} test issues)`);
+    this.renderDiagnostics();
+    
+    this.log('Sample diagnostics applied:', sampleDiagnostics);
+  }
+  
+  // Get debug information
+  getDebugInfo() {
+    return {
+      debugMode: this.debugMode,
+      currentFile: window.currentFilePath,
+      diagnosticsCount: this.diagnostics.size,
+      totalIssues: this.getTotalDiagnosticsCount(),
+      activeLanguageServers: Array.from(this.activeLanguageServers.keys()),
+      isRefreshing: this.isRefreshing,
+      languageServerConfigs: Array.from(this.languageServers.keys()),
+      autoRefreshTimeout: this.autoRefreshTimeout !== null
+    };
+  }
+  
+  // Helper function for console debugging
+  printDebugInfo() {
+    console.table(this.getDebugInfo());
+    console.log('Current diagnostics:', Array.from(this.diagnostics.entries()));
   }
 }
 

@@ -7,6 +7,7 @@ import { TerminalManager } from './terminal.js';
 import DiagnosticsManager from './diagnostics.js';
 import DraggablePanes from './draggable-panes.js';
 import { getWorkspaceFiles, searchInFiles } from './file-system.js';
+import { writeTextFile } from './tauri-helpers.js';
 import OutlinePanel from './outline.js';
 
 import * as monaco from 'monaco-editor';
@@ -1440,6 +1441,100 @@ async function initDiagnostics() {
       refreshBtn.addEventListener('click', () => {
         if (diagnosticsManager) {
           diagnosticsManager.forceRefresh();
+        }
+      });
+    }
+
+    // Set up debug toggle button
+    const debugBtn = document.getElementById('diagnostics-debug-btn');
+    if (debugBtn) {
+      debugBtn.addEventListener('click', () => {
+        if (diagnosticsManager) {
+          diagnosticsManager.toggleDebugMode();
+        }
+      });
+    }
+
+    // Set up test button
+    const testBtn = document.getElementById('diagnostics-test-btn');
+    if (testBtn) {
+      testBtn.addEventListener('click', () => {
+        if (diagnosticsManager) {
+          diagnosticsManager.testWithSampleDiagnostics();
+        }
+      });
+    }
+
+    // Set up open test file button
+    const openTestFileBtn = document.getElementById('diagnostics-open-test-file-btn');
+    if (openTestFileBtn) {
+      openTestFileBtn.addEventListener('click', async () => {
+        try {
+          if (fileExplorer && fileExplorer.rootFolder) {
+            // Create test file path in the current workspace
+            const testFilePath = `${fileExplorer.rootFolder}/src/test-diagnostics.js`;
+            console.log('Attempting to open test file at:', testFilePath);
+            
+            // Try to open the file first
+            try {
+              await fileExplorer.openFileByPath(testFilePath);
+              console.log('Opened existing test file:', testFilePath);
+            } catch (error) {
+              console.log('Test file does not exist, creating it:', error.message);
+              
+              // Create the test file content
+              const testContent = `// Test file for diagnostics
+console.log("This should trigger a warning");
+debugger; // This should trigger a warning
+
+var oldStyle = "this should suggest let/const"; // This should trigger an info message
+
+// TODO: This is a test todo comment
+// FIXME: This needs to be fixed
+
+function testFunction() {
+    let x = 5
+    let y = 10 // Missing semicolon
+    
+    if (x == y) { // Should suggest ===
+        return x + y
+    }
+    
+    return false; // This line is fine
+}
+
+let unused = "this variable might be unused"; // Might trigger unused warning
+
+console.warn("Another console statement");
+console.error("Error console statement");
+
+// This function has issues
+function problemFunction() {
+    var problem = "another var usage"
+    return problem
+}`;
+
+              // Write the test file
+              await writeTextFile(testFilePath, testContent);
+              
+              // Open the newly created file
+              await fileExplorer.openFileByPath(testFilePath);
+              console.log('Created and opened test file:', testFilePath);
+            }
+            
+            // Refresh diagnostics after opening the file
+            setTimeout(() => {
+              if (diagnosticsManager) {
+                diagnosticsManager.refresh();
+              }
+            }, 100);
+          } else {
+            console.error('File explorer not available or no workspace open');
+            alert('Please open a workspace folder first');
+          }
+        } catch (error) {
+          console.error('Failed to open/create test file:', error);
+          alert('Failed to open/create test file: ' + error.message);
         }
       });
     }

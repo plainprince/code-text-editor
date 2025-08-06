@@ -1679,7 +1679,9 @@ body {
   color: var(--text-color);
 }
 
-.diagnostics-refresh-btn {
+.diagnostics-refresh-btn,
+.diagnostics-debug-btn,
+.diagnostics-test-btn {
   background: var(--hover-bg);
   border: 1px solid var(--border-color);
   color: var(--text-color);
@@ -1689,12 +1691,26 @@ body {
   font-size: 12px;
   margin-left: 10px;
   transition: all 0.2s ease;
+  min-width: 40px;
+  text-align: center;
 }
 
-.diagnostics-refresh-btn:hover {
+.diagnostics-refresh-btn:hover,
+.diagnostics-debug-btn:hover,
+.diagnostics-test-btn:hover {
   background: var(--accent-color);
   color: white;
   border-color: var(--accent-color);
+}
+
+.diagnostics-debug-btn {
+  font-size: 14px;
+}
+
+.diagnostics-test-btn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
 }
 
 .diagnostics-controls {
