@@ -83,25 +83,27 @@ class DraggablePanes {
   }
   
   positionResizer(resizer, leftPaneId, rightPaneId) {
-    const leftPane = document.getElementById(leftPaneId);
     const mainRow = document.getElementById('main-row');
+    if (!mainRow) return;
     
-    if (!leftPane || !mainRow) return;
+    const mainRowStyle = getComputedStyle(mainRow);
+    const columns = mainRowStyle.gridTemplateColumns.split(' ');
     
-    const leftRect = leftPane.getBoundingClientRect();
-    const mainRowRect = mainRow.getBoundingClientRect();
-    
-    if (leftPaneId === 'sidebar-left') {
-      // Position at the right edge of left sidebar
-      resizer.style.left = `${leftRect.width - 2}px`;
-    } else if (rightPaneId === 'sidebar-right') {
-      // Position at the left edge of right sidebar (when visible)
-      const mainRowStyle = getComputedStyle(mainRow);
-      const columns = mainRowStyle.gridTemplateColumns.split(' ');
-      if (columns.length >= 3 && columns[2] !== '0px') {
-        const leftWidth = parseFloat(columns[0]);
-        const mainWidth = mainRowRect.width - leftWidth - parseFloat(columns[2]);
+    if (leftPaneId === 'sidebar-left' && rightPaneId === 'main') {
+      // Left resizer: Position at the right edge of left sidebar
+      const leftWidth = parseFloat(columns[0]) || 250;
+      resizer.style.left = `${leftWidth - 2}px`;
+      resizer.style.display = 'block';
+    } else if (leftPaneId === 'main' && rightPaneId === 'sidebar-right') {
+      // Right resizer: Position at the left edge of right sidebar (when visible)
+      const isRightSidebarVisible = mainRow.classList.contains('right-sidebar-visible');
+      if (isRightSidebarVisible && columns.length >= 3 && columns[2] !== '0px') {
+        const leftWidth = parseFloat(columns[0]) || 250;
+        const rightWidth = parseFloat(columns[2]) || 250;
+        const mainRowRect = mainRow.getBoundingClientRect();
+        const mainWidth = mainRowRect.width - leftWidth - rightWidth;
         resizer.style.left = `${leftWidth + mainWidth - 2}px`;
+        resizer.style.display = 'block';
       } else {
         resizer.style.display = 'none';
       }
@@ -147,42 +149,37 @@ class DraggablePanes {
     const deltaX = e.clientX - this.startX;
     const leftPaneId = this.currentResizer.dataset.leftPane;
     const rightPaneId = this.currentResizer.dataset.rightPane;
-    const leftPane = document.getElementById(leftPaneId);
-    const rightPane = document.getElementById(rightPaneId);
     const mainRow = document.getElementById('main-row');
     
-    if (!leftPane || !rightPane || !mainRow) return;
+    if (!mainRow) return;
     
-    const leftRect = leftPane.getBoundingClientRect();
-    const rightRect = rightPane.getBoundingClientRect();
+    const currentColumns = getComputedStyle(mainRow).gridTemplateColumns.split(' ');
+    const currentLeftWidth = parseFloat(currentColumns[0]) || 250;
+    const currentRightWidth = parseFloat(currentColumns[2]) || 250;
     
-    let newLeftWidth = leftRect.width + deltaX;
-    let newRightWidth = rightRect.width - deltaX;
-    
-    // Enforce minimum and maximum sizes
-    newLeftWidth = Math.max(this.minPaneSize, Math.min(newLeftWidth, this.maxPaneSize));
-    
-    if (rightPaneId === 'sidebar-right') {
-      newRightWidth = Math.max(this.minPaneSize, newRightWidth);
+    if (leftPaneId === 'sidebar-left' && rightPaneId === 'main') {
+      // Resizing left sidebar
+      let newLeftWidth = currentLeftWidth + deltaX;
+      newLeftWidth = Math.max(this.minPaneSize, Math.min(newLeftWidth, this.maxPaneSize));
       
-      // Update grid template columns for main-row
-      const isRightSidebarVisible = mainRow.classList.contains('right-sidebar-visible');
-      if (isRightSidebarVisible) {
-        mainRow.style.gridTemplateColumns = `${newLeftWidth}px 1fr ${newRightWidth}px`;
-      }
+      // Update grid keeping right width the same
+      const rightWidth = currentColumns[2];
+      mainRow.style.gridTemplateColumns = `${newLeftWidth}px 1fr ${rightWidth}`;
       
-      this.savePaneSize(rightPaneId, newRightWidth);
-    } else {
-      // For left sidebar only
-      const currentColumns = getComputedStyle(mainRow).gridTemplateColumns.split(' ');
-      if (currentColumns.length >= 3) {
-        const rightWidth = currentColumns[2];
-        mainRow.style.gridTemplateColumns = `${newLeftWidth}px 1fr ${rightWidth}`;
-      }
+      this.savePaneSize('sidebar-left', newLeftWidth);
+      
+    } else if (leftPaneId === 'main' && rightPaneId === 'sidebar-right') {
+      // Resizing right sidebar
+      let newRightWidth = currentRightWidth - deltaX;
+      newRightWidth = Math.max(this.minPaneSize, Math.min(newRightWidth, this.maxPaneSize));
+      
+      // Update grid keeping left width the same
+      mainRow.style.gridTemplateColumns = `${currentLeftWidth}px 1fr ${newRightWidth}px`;
+      
+      this.savePaneSize('sidebar-right', newRightWidth);
     }
     
     this.startX = e.clientX;
-    this.savePaneSize(leftPaneId, newLeftWidth);
     
     // Reposition resizers after resize
     this.repositionAllResizers();
