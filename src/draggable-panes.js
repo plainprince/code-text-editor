@@ -16,6 +16,12 @@ class DraggablePanes {
   }
   
   init() {
+    // Ensure main-row has relative positioning for absolute positioned resizers
+    const mainRow = document.getElementById('main-row');
+    if (mainRow) {
+      mainRow.style.position = 'relative';
+    }
+    
     this.createResizers();
     this.setupEventListeners();
     this.loadPaneSizes();
@@ -46,8 +52,17 @@ class DraggablePanes {
     resizer.dataset.rightPane = rightPaneId;
     resizer.dataset.direction = 'horizontal';
     
-    // Insert resizer between the panes in main-row
-    mainRow.insertBefore(resizer, rightPane);
+    // Position the resizer absolutely over the grid boundary
+    resizer.style.position = 'absolute';
+    resizer.style.top = '0';
+    resizer.style.bottom = '0';
+    resizer.style.width = '4px';
+    resizer.style.zIndex = '1000';
+    resizer.style.cursor = 'col-resize';
+    
+    // Add to main-row and position based on which resizer it is
+    mainRow.appendChild(resizer);
+    this.positionResizer(resizer, leftPaneId, rightPaneId);
   }
   
   createTerminalResizer() {
@@ -65,6 +80,32 @@ class DraggablePanes {
     
     // Insert before terminal in the bottom panels container
     bottomPanelsContainer.insertBefore(resizer, terminal);
+  }
+  
+  positionResizer(resizer, leftPaneId, rightPaneId) {
+    const leftPane = document.getElementById(leftPaneId);
+    const mainRow = document.getElementById('main-row');
+    
+    if (!leftPane || !mainRow) return;
+    
+    const leftRect = leftPane.getBoundingClientRect();
+    const mainRowRect = mainRow.getBoundingClientRect();
+    
+    if (leftPaneId === 'sidebar-left') {
+      // Position at the right edge of left sidebar
+      resizer.style.left = `${leftRect.width - 2}px`;
+    } else if (rightPaneId === 'sidebar-right') {
+      // Position at the left edge of right sidebar (when visible)
+      const mainRowStyle = getComputedStyle(mainRow);
+      const columns = mainRowStyle.gridTemplateColumns.split(' ');
+      if (columns.length >= 3 && columns[2] !== '0px') {
+        const leftWidth = parseFloat(columns[0]);
+        const mainWidth = mainRowRect.width - leftWidth - parseFloat(columns[2]);
+        resizer.style.left = `${leftWidth + mainWidth - 2}px`;
+      } else {
+        resizer.style.display = 'none';
+      }
+    }
   }
   
   setupEventListeners() {
@@ -142,6 +183,9 @@ class DraggablePanes {
     
     this.startX = e.clientX;
     this.savePaneSize(leftPaneId, newLeftWidth);
+    
+    // Reposition resizers after resize
+    this.repositionAllResizers();
   }
   
   handleVerticalResize(e) {
@@ -181,6 +225,22 @@ class DraggablePanes {
     
     // Ensure panes don't exceed new limits
     this.constrainPaneSizes();
+    
+    // Reposition all resizers
+    this.repositionAllResizers();
+  }
+  
+  repositionAllResizers() {
+    const leftResizer = document.getElementById('left-resizer');
+    const rightResizer = document.getElementById('right-resizer');
+    
+    if (leftResizer) {
+      this.positionResizer(leftResizer, 'sidebar-left', 'main');
+    }
+    
+    if (rightResizer) {
+      this.positionResizer(rightResizer, 'main', 'sidebar-right');
+    }
   }
   
   constrainPaneSizes() {
@@ -228,6 +288,9 @@ class DraggablePanes {
     const mainRow = document.getElementById('main-row');
     if (!mainRow) return;
     
+    // Ensure main-row has relative positioning for absolute positioned resizers
+    mainRow.style.position = 'relative';
+    
     const leftWidth = window.settings.paneSizes['sidebar-left'] || 250;
     const rightWidth = window.settings.paneSizes['sidebar-right'] || 250;
     const terminalHeight = window.settings.paneSizes['terminal'] || 200;
@@ -248,6 +311,11 @@ class DraggablePanes {
       terminal.style.flexShrink = '0';
       terminal.style.flexGrow = '0';
     }
+    
+    // Reposition resizers after loading sizes
+    setTimeout(() => {
+      this.repositionAllResizers();
+    }, 10);
   }
   
   resetPaneSizes() {
@@ -297,6 +365,11 @@ class DraggablePanes {
     } else {
       mainRow.style.gridTemplateColumns = `${leftWidth}px 1fr 0px`;
     }
+    
+    // Reposition resizers after layout change
+    setTimeout(() => {
+      this.repositionAllResizers();
+    }, 10);
   }
   
   // Method to handle terminal visibility changes
