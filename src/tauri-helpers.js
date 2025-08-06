@@ -1,11 +1,20 @@
 // tauri-helpers.js - Centralized Tauri API helpers to avoid import issues
 
+// Ensure Tauri is available
+function ensureTauri() {
+  if (!window.__TAURI__) {
+    throw new Error('Tauri is not available');
+  }
+  return window.__TAURI__;
+}
+
 /**
  * Check if a command exists on the system
  */
 export async function checkCommandExists(command) {
   try {
-    return await window.__TAURI__.core.invoke('check_command_exists', { command });
+    const tauri = ensureTauri();
+    return await tauri.core.invoke('check_command_exists', { command });
   } catch (error) {
     console.error('Failed to check command:', error);
     return false;
@@ -17,7 +26,8 @@ export async function checkCommandExists(command) {
  */
 export async function startLanguageServer(command, args, language) {
   try {
-    return await window.__TAURI__.core.invoke('start_language_server', {
+    const tauri = ensureTauri();
+    return await tauri.core.invoke('start_language_server', {
       command,
       args,
       language
@@ -33,7 +43,8 @@ export async function startLanguageServer(command, args, language) {
  */
 export async function sendLspRequest(processId, message) {
   try {
-    return await window.__TAURI__.core.invoke('send_lsp_request', {
+    const tauri = ensureTauri();
+    return await tauri.core.invoke('send_lsp_request', {
       process_id: processId,
       message
     });
@@ -48,7 +59,8 @@ export async function sendLspRequest(processId, message) {
  */
 export async function writeTextFile(filePath, content) {
   try {
-    return await window.__TAURI__.core.invoke('write_text_file', {
+    const tauri = ensureTauri();
+    return await tauri.core.invoke('write_text_file', {
       filePath,
       content
     });
