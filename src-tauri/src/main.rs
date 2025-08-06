@@ -1070,7 +1070,7 @@ fn get_generic_name(node: Node, source_code: &str) -> Option<String> {
 }
 
 // Language Server Commands
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn start_language_server(
     command: String,
     args: Vec<String>,
@@ -1095,7 +1095,7 @@ async fn start_language_server(
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn send_lsp_request(
     process_id: String,
     message: String,
