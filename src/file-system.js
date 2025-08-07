@@ -8,7 +8,7 @@ function generateId() {
 // Read file content
 async function readFile(filePath) {
   try {
-    return await window.__TAURI__.core.invoke("read_text_file", { filePath });
+    return await window.__TAURI__.core.invoke("read_text_file", { file_path: filePath });
   } catch (error) {
     console.error("Failed to read file:", error);
     throw new Error(error);
@@ -18,7 +18,7 @@ async function readFile(filePath) {
 // Write file content
 async function writeFile(filePath, content) {
   try {
-    await window.__TAURI__.core.invoke("write_text_file", { filePath, content });
+    await window.__TAURI__.core.invoke("write_text_file", { file_path: filePath, content });
     return true;
   } catch (error) {
     console.error("Failed to write file:", error);
@@ -29,7 +29,7 @@ async function writeFile(filePath, content) {
 // Read directory contents
 async function readDirectory(folderPath) {
   try {
-    const files = await window.__TAURI__.core.invoke("read_directory", { dirPath: folderPath });
+    const files = await window.__TAURI__.core.invoke("read_directory", { dir_path: folderPath });
     
     const entries = [];
     const folders = [];
@@ -70,7 +70,7 @@ async function readDirectory(folderPath) {
 // Check if file exists
 async function fileExists(filePath) {
   try {
-    return await window.__TAURI__.core.invoke("file_exists", { filePath });
+    return await window.__TAURI__.core.invoke("file_exists", { file_path: filePath });
   } catch (error) {
     console.error("Failed to check file existence:", error);
     return false;
@@ -102,7 +102,7 @@ function saveFileObject(id, fileObject) {
 // Get all files in workspace
 async function getWorkspaceFiles(workspacePath) {
   try {
-    return await window.__TAURI__.core.invoke("get_workspace_files", { workspacePath });
+    return await window.__TAURI__.core.invoke("get_workspace_files", { workspace_path: workspacePath });
   } catch (error) {
     console.error("Failed to get workspace files:", error);
     throw new Error(error);
@@ -112,7 +112,7 @@ async function getWorkspaceFiles(workspacePath) {
 // Delete file
 async function deleteFile(filePath) {
   try {
-    await window.__TAURI__.core.invoke("delete_file", { filePath });
+    await window.__TAURI__.core.invoke("delete_file", { file_path: filePath });
     return true;
   } catch (error) {
     console.error("Failed to delete file:", error);
@@ -123,7 +123,7 @@ async function deleteFile(filePath) {
 // Delete directory
 async function deleteDirectory(dirPath) {
   try {
-    await window.__TAURI__.core.invoke("delete_directory", { dirPath });
+    await window.__TAURI__.core.invoke("delete_directory", { dir_path: dirPath });
     return true;
   } catch (error) {
     console.error("Failed to delete directory:", error);
@@ -134,7 +134,7 @@ async function deleteDirectory(dirPath) {
 // Create directory
 async function createDirectory(dirPath) {
   try {
-    await window.__TAURI__.core.invoke("create_directory", { dirPath });
+    await window.__TAURI__.core.invoke("create_directory", { dir_path: dirPath });
     return true;
   } catch (error) {
     console.error("Failed to create directory:", error);
@@ -145,7 +145,7 @@ async function createDirectory(dirPath) {
 // Rename file or directory
 async function renameFile(oldPath, newPath) {
   try {
-    await window.__TAURI__.core.invoke("rename_file", { oldPath, newPath });
+    await window.__TAURI__.core.invoke("rename_file", { old_path: oldPath, new_path: newPath });
     return true;
   } catch (error) {
     console.error("Failed to rename file:", error);
@@ -156,7 +156,7 @@ async function renameFile(oldPath, newPath) {
 // Copy file
 async function copyFile(sourcePath, destPath) {
   try {
-    await window.__TAURI__.core.invoke("copy_file", { sourcePath, destPath });
+    await window.__TAURI__.core.invoke("copy_file", { source_path: sourcePath, dest_path: destPath });
     return true;
   } catch (error) {
     console.error("Failed to copy file:", error);
@@ -167,7 +167,7 @@ async function copyFile(sourcePath, destPath) {
 // Move file
 async function moveFile(sourcePath, destPath) {
   try {
-    await window.__TAURI__.core.invoke("move_file", { sourcePath, destPath });
+    await window.__TAURI__.core.invoke("move_file", { source_path: sourcePath, dest_path: destPath });
     return true;
   } catch (error) {
     console.error("Failed to move file:", error);
@@ -178,7 +178,7 @@ async function moveFile(sourcePath, destPath) {
 // Clipboard operations
 async function clipboardCopy(filePath) {
   try {
-    await window.__TAURI__.core.invoke("clipboard_copy", { filePath });
+    await window.__TAURI__.core.invoke("clipboard_copy", { file_path: filePath });
     return true;
   } catch (error) {
     console.error("Failed to copy to clipboard:", error);
@@ -188,7 +188,7 @@ async function clipboardCopy(filePath) {
 
 async function clipboardCut(filePath) {
   try {
-    await window.__TAURI__.core.invoke("clipboard_cut", { filePath });
+    await window.__TAURI__.core.invoke("clipboard_cut", { file_path: filePath });
     return true;
   } catch (error) {
     console.error("Failed to cut to clipboard:", error);
@@ -198,7 +198,7 @@ async function clipboardCut(filePath) {
 
 async function clipboardPaste(targetDir) {
   try {
-    const result = await window.__TAURI__.core.invoke("clipboard_paste", { targetDir });
+    const result = await window.__TAURI__.core.invoke("clipboard_paste", { target_dir: targetDir });
     return result;
   } catch (error) {
     console.error("Failed to paste from clipboard:", error);
@@ -236,12 +236,12 @@ async function searchInFiles(workspacePath, query, options = {}) {
     } = options;
     
     return await window.__TAURI__.core.invoke("search_in_files", {
-      workspacePath,
+      workspace_path: workspacePath,
       query,
-      useRegex,
-      caseSensitive,
-      wholeWord,
-      maxResults
+      use_regex: useRegex,
+      case_sensitive: caseSensitive,
+      whole_word: wholeWord,
+      max_results: maxResults
     });
   } catch (error) {
     console.error("Failed to search in files:", error);

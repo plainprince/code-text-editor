@@ -615,7 +615,7 @@ class FileExplorer {
     const filePath = `${parentPath}/${fileName}`;
     try {
       await window.__TAURI__.core.invoke("write_text_file", { 
-        filePath, 
+        file_path: filePath, 
         content: "" 
       });
       

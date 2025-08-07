@@ -466,7 +466,7 @@ async function switchToTab(filePath) {
     }
     
     // Load file content fresh from disk
-    const content = await window.__TAURI__.core.invoke("read_text_file", { filePath });
+    const content = await window.__TAURI__.core.invoke("read_text_file", { file_path: filePath });
     const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'untitled';
     
     // Validate content before proceeding
@@ -566,10 +566,10 @@ async function saveCurrentFile() {
       
       // Save regular files directly to disk
       try {
-        await window.__TAURI__.core.invoke("write_text_file", { 
-          filePath: currentFilePath, 
-          content 
-        });
+              await window.__TAURI__.core.invoke("write_text_file", { 
+        file_path: currentFilePath, 
+        content 
+      });
         // File saved silently - no notification needed
       } catch (saveErr) {
         console.error("Failed to save file:", saveErr);
@@ -604,7 +604,7 @@ async function loadSettings() {
     const filePath = await getSettingsFilePath();
     
     // Check if settings file exists
-    const exists = await window.__TAURI__.core.invoke("file_exists", { filePath });
+    const exists = await window.__TAURI__.core.invoke("file_exists", { file_path: filePath });
     
     if (!exists) {
       // File doesn't exist, save default settings
@@ -613,7 +613,7 @@ async function loadSettings() {
     }
     
     // Read settings file
-    const content = await window.__TAURI__.core.invoke("read_text_file", { filePath });
+    const content = await window.__TAURI__.core.invoke("read_text_file", { file_path: filePath });
     const loadedSettings = JSON.parse(content);
     
     // Merge loaded settings with current settings
@@ -631,7 +631,7 @@ async function saveSettings() {
     const content = JSON.stringify(window.settings, null, 2);
     
     // Write settings to file
-    await window.__TAURI__.core.invoke("write_text_file", { filePath, content });
+    await window.__TAURI__.core.invoke("write_text_file", { file_path: filePath, content });
   } catch (err) {
     console.error("Failed to save settings:", err);
   }
@@ -1581,10 +1581,10 @@ function initSettingsWatcher() {
   settingsWatcher = setInterval(async () => {
     try {
       const filePath = await getSettingsFilePath();
-      const exists = await window.__TAURI__.core.invoke("file_exists", { filePath });
+      const exists = await window.__TAURI__.core.invoke("file_exists", { file_path: filePath });
       
       if (exists) {
-        const content = await window.__TAURI__.core.invoke("read_text_file", { filePath });
+        const content = await window.__TAURI__.core.invoke("read_text_file", { file_path: filePath });
         const loadedSettings = JSON.parse(content);
         
         // Check if settings have changed
