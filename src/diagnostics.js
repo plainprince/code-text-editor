@@ -23,7 +23,6 @@ class DiagnosticsManager {
     this.lspResponses = new Map(); // Store responses from LSP
 
     // Bind methods to ensure correct `this` context
-    this.handleLspMessage = this.handleLspMessage.bind(this);
     this.refresh = this.refresh.bind(this);
 
     this.init();
