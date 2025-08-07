@@ -1,96 +1,83 @@
 // src/language-server-dep-manager.js
 
-import { getAppSupportDir, fileExists, createDirectory, runCommand } from './tauri-helpers.js';
+import { getAppSupportDir, runCommand } from './tauri-helpers.js';
+import { fileExists, createDirectory } from './file-system.js';
 
-class LanguageServerDepManager {
-  constructor() {
-    this.supportDir = null;
-    this.npmPath = null;
-    this.isInitialized = false;
-    this.installationInProgress = new Set();
-  }
-
-  log(message, ...args) {
-    console.log('[LanguageServerDepManager]', message, ...args);
-  }
-
-  error(message, ...args) {
-    console.error('[LanguageServerDepManager ERROR]', message, ...args);
-  }
-
-  async initialize() {
-    if (this.isInitialized) return;
-
-    try {
-      this.log('Initializing...');
-      const dir = await getAppSupportDir();
-      this.supportDir = `${dir}/language-servers/`;
-      this.log('Support directory set to:', this.supportDir);
-
-      const dirExists = await fileExists(this.supportDir);
-      if (!dirExists) {
-        this.log('Support directory does not exist, creating it...');
-        await createDirectory(this.supportDir, { recursive: true });
-      }
-
-      const packageJsonPath = `${this.supportDir}package.json`;
-      const packageJsonExists = await fileExists(packageJsonPath);
-      if (!packageJsonExists) {
-        this.log('package.json not found, initializing npm...');
-        await runCommand('npm', ['init', '-y'], this.supportDir);
-      }
-      
-      this.npmPath = 'npm'; // Assume npm is in PATH for now.
-      this.isInitialized = true;
-      this.log('Initialization complete.');
-    } catch (err) {
-      this.error('Initialization failed:', err);
-      this.isInitialized = false;
-    }
-  }
-
-  async ensureServerInstalled(serverName, npmPackage) {
-    if (!this.isInitialized) {
-      this.error('Manager is not initialized. Cannot install server.');
-      return false;
-    }
-    
-    if (this.installationInProgress.has(npmPackage)) {
-        this.log(`Installation for ${npmPackage} is already in progress.`);
-        return false;
+class LanguageServerDependencyManager {
+    constructor() {
+        this.supportDir = null;
+        this.npmPath = 'npm'; // or a bundled npm
+        this.initialized = false;
+        this.installations = new Map(); // serverCommand -> status
     }
 
-    try {
-      const serverPath = `${this.supportDir}node_modules/${serverName}`;
-      const serverExists = await fileExists(serverPath);
+    async initialize() {
+        if (this.initialized) return;
 
-      if (serverExists) {
-        this.log(`${serverName} is already installed at: ${serverPath}`);
-        return true;
-      }
+        try {
+            this.supportDir = await getAppSupportDir();
+            const serversDir = `${this.supportDir}/servers`;
+            if (!await fileExists(serversDir)) {
+                await createDirectory(serversDir);
+            }
+            this.serversDir = serversDir;
 
-      this.log(`Installing ${serverName} via npm package ${npmPackage}...`);
-      this.installationInProgress.add(npmPackage);
-      
-      // Using 'install' which adds it to package.json and installs.
-      await runCommand(this.npmPath, ['install', npmPackage, '--save-dev'], this.supportDir);
-      
-      this.log(`${npmPackage} installed successfully.`);
-      return true;
-    } catch (err) {
-      this.error(`Failed to install ${npmPackage}:`, err);
-      return false;
-    } finally {
-        this.installationInProgress.delete(npmPackage);
+            const packageJsonPath = `${this.serversDir}/package.json`;
+            if (!await fileExists(packageJsonPath)) {
+                await runCommand('npm', ['init', '-y'], this.serversDir);
+            }
+
+            this.initialized = true;
+            console.log('[LSDepManager] Initialized successfully. Servers directory:', this.serversDir);
+        } catch (error) {
+            console.error('[LSDepManager] Failed to initialize:', error);
+            this.initialized = false;
+        }
     }
-  }
 
-  getServerExecutablePath(serverName) {
-    if (!this.isInitialized) return null;
-    // This path needs to point to the actual binary inside the package.
-    // This is a common pattern, but might need adjustment per-package.
-    return `${this.supportDir}node_modules/.bin/${serverName}`;
-  }
+    getServerExecutablePath(serverCommand) {
+        return `${this.serversDir}/node_modules/.bin/${serverCommand}`;
+    }
+
+    async isServerInstalled(serverCommand) {
+        if (!this.initialized) {
+            console.error('[LSDepManager] Not initialized. Cannot check for server installation.');
+            return false;
+        }
+        const executablePath = this.getServerExecutablePath(serverCommand);
+        return await fileExists(executablePath);
+    }
+
+    async installServer(serverCommand, npmPackage) {
+        if (!this.initialized) {
+            console.error(`[LSDepManager] Not initialized. Cannot install ${npmPackage}.`);
+            return false;
+        }
+
+        console.log(`[LSDepManager] Installing ${npmPackage}...`);
+        this.installations.set(serverCommand, 'installing');
+        try {
+            await runCommand('npm', ['install', npmPackage], this.serversDir);
+            console.log(`[LSDepManager] Successfully installed ${npmPackage}.`);
+            this.installations.set(serverCommand, 'installed');
+            return true;
+        } catch (error) {
+            console.error(`[LSDepManager] Failed to install ${npmPackage}:`, error);
+            this.installations.set(serverCommand, 'failed');
+            return false;
+        }
+    }
+
+    async ensureServerInstalled(serverCommand, npmPackage) {
+        const isInstalled = await this.isServerInstalled(serverCommand);
+        if (isInstalled) {
+            console.log(`[LSDepManager] ${serverCommand} is already installed.`);
+            return true;
+        }
+
+        return await this.installServer(serverCommand, npmPackage);
+    }
 }
 
-export default new LanguageServerDepManager();
+const lsDepManager = new LanguageServerDependencyManager();
+export default lsDepManager;

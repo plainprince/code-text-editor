@@ -8,7 +8,6 @@ import {
   sendLspNotification,
   listenToLspMessages
 } from './tauri-helpers.js';
-import LanguageServerManager from './language-server-manager.js';
 import lsDepManager from './language-server-dep-manager.js';
 
 class DiagnosticsManager {
@@ -19,7 +18,6 @@ class DiagnosticsManager {
     this.openDocuments = new Set(); // Track which documents are open in LSP
     this.isRefreshing = false;
     this.autoRefreshTimeout = null; // For debouncing auto-refresh
-    this.languageServerManager = new LanguageServerManager();
     this.activeLanguageServers = new Map(); // language -> process info
     this.debugMode = true; // Enable debug logging
     this.lspResponses = new Map(); // Store responses from LSP
@@ -48,7 +46,6 @@ class DiagnosticsManager {
     });
     
     // Expose to global scope for debugging
-    window.languageServerManager = this.languageServerManager;
     window.diagnosticsManager = this;
   }
   
@@ -348,16 +345,23 @@ class DiagnosticsManager {
   }
 
   async checkServerAvailability(serverInfo, forceRefresh = false) {
-    // Check cache first (unless forced refresh)
+    if (serverInfo.type === 'npm') {
+        const installed = await lsDepManager.ensureServerInstalled(serverInfo.command, serverInfo.npmPackage);
+        if (installed) {
+            // Overwrite the command with the full path to the local executable
+            serverInfo.command = lsDepManager.getServerExecutablePath(serverInfo.command);
+            this.log(`Using locally installed server at: ${serverInfo.command}`);
+        }
+        return installed;
+    }
+
+    // For global servers, check if the command exists in the PATH
     const cacheKey = `lsp_${serverInfo.command}`;
     if (!forceRefresh) {
       const cached = this.getCachedServerStatus(cacheKey);
-      if (cached !== null) {
-        return cached;
-      }
+      if (cached !== null) return cached;
     }
 
-    // Check server availability
     try {
       const result = await checkCommandExists(serverInfo.command);
       this.setCachedServerStatus(cacheKey, result);
