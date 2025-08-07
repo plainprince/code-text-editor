@@ -1070,12 +1070,15 @@ fn get_generic_name(node: Node, source_code: &str) -> Option<String> {
 }
 
 // Language Server Commands
+use std::io::BufRead;
+
 #[tauri::command(rename_all = "snake_case")]
 async fn start_language_server(
     command: String,
     args: Vec<String>,
     language: String,
-    state: tauri::State<'_, LanguageServerMap>
+    state: tauri::State<'_, LanguageServerMap>,
+    app_handle: tauri::AppHandle
 ) -> Result<String, String> {
     let process_id = format!("{}_{}", language, Utc::now().timestamp_millis());
     
@@ -1086,7 +1089,29 @@ async fn start_language_server(
        .stderr(Stdio::piped());
     
     match cmd.spawn() {
-        Ok(child) => {
+        Ok(mut child) => {
+            let stdout = child.stdout.take().ok_or("Failed to take stdout")?;
+            
+            let listener_app_handle = app_handle.clone();
+            std::thread::spawn(move || {
+                let reader = std::io::BufReader::new(stdout);
+                let mut buffer = String::new();
+
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        buffer.push_str(&line);
+                        buffer.push_str("\r\n");
+
+                        if buffer.contains("\r\n\r\n") {
+                            if let Some(json_str) = buffer.split("\r\n\r\n").nth(1) {
+                                let _ = listener_app_handle.emit("lsp_message", json_str);
+                            }
+                            buffer.clear();
+                        }
+                    }
+                }
+            });
+
             let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
             processes.insert(process_id.clone(), child);
             Ok(process_id)
@@ -1094,6 +1119,7 @@ async fn start_language_server(
         Err(e) => Err(format!("Failed to start language server '{}': {}", command, e))
     }
 }
+
 
 #[tauri::command(rename_all = "snake_case")]
 async fn send_lsp_request(

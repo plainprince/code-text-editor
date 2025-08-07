@@ -14,24 +14,44 @@ class DiagnosticsManager {
     this.languageServerManager = new LanguageServerManager();
     this.activeLanguageServers = new Map(); // language -> process info
     this.debugMode = true; // Enable debug logging
+    this.lspResponses = new Map(); // Store responses from LSP
     this.init();
   }
 
-  init() {
+  async init() {
     this.setupEventListeners();
     this.setupLanguageServers();
     this.log('DiagnosticsManager initialized');
+    
+    // Listen for LSP messages from the backend
+    const { listen } = await import(window.__TAURI_INTERNALS__.plugins.event.js);
+    await listen('lsp_message', (event) => {
+      this.handleLspMessage(event.payload);
+    });
     
     // Expose to global scope for debugging
     window.languageServerManager = this.languageServerManager;
     window.diagnosticsManager = this;
   }
+
   
-  log(message, ...args) {
-    if (this.debugMode) {
-      console.log('[DiagnosticsManager]', message, ...args);
+  handleLspMessage(message) {
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed.id) {
+        // This is a response to a request
+        this.lspResponses.set(parsed.id, parsed);
+      } else if (parsed.method === 'textDocument/publishDiagnostics') {
+        // This is a notification
+        const diagnostics = this.convertLspDiagnostics(parsed.params.diagnostics);
+        this.diagnostics.set(parsed.params.uri.replace('file://', ''), diagnostics);
+        this.renderDiagnostics();
+      }
+    } catch (error) {
+      this.error('Failed to handle LSP message:', error);
     }
   }
+
   
   error(message, ...args) {
     console.error('[DiagnosticsManager ERROR]', message, ...args);
@@ -358,25 +378,10 @@ class DiagnosticsManager {
     try {
       // Try to get real diagnostics from the language server
       const realDiagnostics = await this.getRealDiagnostics(filePath, serverInfo, language);
-      
-      this.log('Retrieved real diagnostics:', realDiagnostics.length, 'items');
-      
-      if (realDiagnostics.length > 0) {
-        this.diagnostics.set(filePath, realDiagnostics);
-      } else {
-        // No real diagnostics, try fallback
-        this.log('No real diagnostics found, trying fallback');
-        const fallbackDiagnostics = await this.getFallbackDiagnostics(filePath, language);
-        this.log('Fallback diagnostics found:', fallbackDiagnostics.length, 'items');
-        this.diagnostics.set(filePath, fallbackDiagnostics);
-      }
+      this.diagnostics.set(filePath, realDiagnostics);
     } catch (error) {
-      this.error('Failed to get real diagnostics, using fallback:', error);
-      
-      // Fallback: try to generate some basic diagnostics using tree-sitter or static analysis
-      const fallbackDiagnostics = await this.getFallbackDiagnostics(filePath, language);
-      this.log('Error fallback diagnostics found:', fallbackDiagnostics.length, 'items');
-      this.diagnostics.set(filePath, fallbackDiagnostics);
+      this.error('Could not get diagnostics:', error.message);
+      this.diagnostics.set(filePath, []);
     }
 
     this.renderDiagnostics();
@@ -413,138 +418,7 @@ class DiagnosticsManager {
     }
   }
   
-  async getFallbackDiagnostics(filePath, language) {
-    this.log('Using fallback diagnostics for:', { filePath, language });
-    
-    try {
-      // For JavaScript/TypeScript, try some basic syntax checking
-      if (language === 'javascript' || language === 'typescript') {
-        return await this.getJavaScriptFallbackDiagnostics(filePath);
-      }
-      
-      // For other languages, return empty for now
-      return [];
-    } catch (error) {
-      this.error('Fallback diagnostics failed:', error);
-      return [];
-    }
-  }
-  
-  async getJavaScriptFallbackDiagnostics(filePath) {
-    try {
-      const content = await this.readFileContent(filePath);
-      if (!content) {
-        this.log('No file content available for fallback diagnostics');
-        return [];
-      }
-      
-      this.log('Analyzing file content for fallback diagnostics, content length:', content.length);
-      
-      const diagnostics = [];
-      const lines = content.split('\n');
-      
-      // Simple checks for common issues
-      lines.forEach((line, index) => {
-        const lineNumber = index + 1;
-        const trimmedLine = line.trim();
-        
-        // Skip empty lines and comments
-        if (!trimmedLine || trimmedLine.startsWith('//') || trimmedLine.startsWith('/*')) {
-          return;
-        }
-        
-        // Check for console.log (warning)
-        if (line.includes('console.log') || line.includes('console.warn') || line.includes('console.error')) {
-          const match = line.match(/(console\.(log|warn|error))/);
-          if (match) {
-            diagnostics.push({
-              severity: match[2] === 'error' ? 'error' : 'warning',
-              message: `${match[1]} statement found - consider removing in production`,
-              line: lineNumber,
-              character: line.indexOf(match[1]) + 1,
-              source: 'fallback-linter'
-            });
-          }
-        }
-        
-        // Check for debugger statements
-        if (line.includes('debugger')) {
-          diagnostics.push({
-            severity: 'warning',
-            message: 'debugger statement found - should be removed in production',
-            line: lineNumber,
-            character: line.indexOf('debugger') + 1,
-            source: 'fallback-linter'
-          });
-        }
-        
-        // Check for TODO/FIXME comments
-        const todoMatch = line.match(/(TODO|FIXME|HACK|XXX)(.*)/);
-        if (todoMatch) {
-          diagnostics.push({
-            severity: 'info',
-            message: `${todoMatch[1]} comment found: ${todoMatch[2].trim()}`,
-            line: lineNumber,
-            character: line.indexOf(todoMatch[1]) + 1,
-            source: 'fallback-linter'
-          });
-        }
-        
-        // Check for var keyword (suggest let/const instead)
-        const varMatch = line.match(/\bvar\s+(\w+)/);
-        if (varMatch) {
-          diagnostics.push({
-            severity: 'info',
-            message: `Consider using 'let' or 'const' instead of 'var' for '${varMatch[1]}'`,
-            line: lineNumber,
-            character: line.indexOf('var') + 1,
-            source: 'fallback-linter'
-          });
-        }
-        
-        // Check for == instead of ===
-        if (line.includes('==') && !line.includes('===') && !line.includes('!=')) {
-          const match = line.match(/(\w+)\s*==\s*(\w+)/);
-          if (match) {
-            diagnostics.push({
-              severity: 'warning',
-              message: 'Use strict equality (===) instead of loose equality (==)',
-              line: lineNumber,
-              character: line.indexOf('==') + 1,
-              source: 'fallback-linter'
-            });
-          }
-        }
-        
-        // Check for missing semicolons on statements
-        if (trimmedLine && 
-            !trimmedLine.endsWith(';') && 
-            !trimmedLine.endsWith('{') && 
-            !trimmedLine.endsWith('}') && 
-            !trimmedLine.endsWith(',') &&
-            (trimmedLine.includes('=') || 
-             trimmedLine.startsWith('return ') || 
-             trimmedLine.startsWith('throw ') ||
-             trimmedLine.startsWith('break') ||
-             trimmedLine.startsWith('continue'))) {
-          diagnostics.push({
-            severity: 'info',
-            message: 'Missing semicolon',
-            line: lineNumber,
-            character: line.length,
-            source: 'fallback-linter'
-          });
-        }
-      });
-      
-      this.log('Fallback JavaScript diagnostics found:', diagnostics.length, 'issues');
-      return diagnostics;
-      
-    } catch (error) {
-      this.error('JavaScript fallback diagnostics failed:', error);
-      return [];
-    }
-  }
+
   
   async ensureLanguageServerRunning(serverInfo, language) {
     const existing = this.activeLanguageServers.get(language);
@@ -565,6 +439,11 @@ class DiagnosticsManager {
       });
       
       this.log('Language server started with process ID:', processId);
+      
+      // Start listener for this process
+      const { invoke } = await import(window.__TAURI_INTERNALS__.plugins.shell.js);
+      await invoke('start_lsp_listener', { process_id: processId });
+      
       return processId;
       
     } catch (error) {
@@ -648,50 +527,28 @@ class DiagnosticsManager {
     this.log('Requesting diagnostics via LSP for:', filePath);
     
     try {
-      // Add timeout to prevent hanging
-      const timeout = (ms) => new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('LSP request timeout')), ms)
-      );
-      
-      // If document is already open, send a change notification instead
       if (this.openDocuments.has(filePath)) {
         this.log('Document already open, sending change notification');
-        
         const changeNotification = {
           jsonrpc: '2.0',
           method: 'textDocument/didChange',
           params: {
             textDocument: {
               uri: `file://${filePath}`,
-              version: Date.now() // Use timestamp as version for simplicity
+              version: Date.now()
             },
-            contentChanges: [{
-              text: content // Full text replacement
-            }]
+            contentChanges: [{ text: content }]
           }
         };
-        
-        this.log('Sending change notification...');
-        await Promise.race([
-          sendLspNotification(processId, JSON.stringify(changeNotification)),
-          timeout(5000)
-        ]);
-        this.log('Change notification sent successfully');
+        await sendLspNotification(processId, JSON.stringify(changeNotification));
       } else {
-        // Document not open, send didOpen
-        this.log('Sending didOpen notification...');
-        await Promise.race([
-          this.sendDidOpenNotification(processId, filePath, language, content),
-          timeout(5000)
-        ]);
-        this.log('DidOpen notification sent successfully');
+        await this.sendDidOpenNotification(processId, filePath, language, content);
       }
       
-      // Request document symbols to trigger analysis
-      this.log('Requesting document symbols...');
+      const id = Date.now();
       const symbolRequest = {
         jsonrpc: '2.0',
-        id: Date.now(),
+        id,
         method: 'textDocument/documentSymbol',
         params: {
           textDocument: {
@@ -700,43 +557,22 @@ class DiagnosticsManager {
         }
       };
       
-      const response = await Promise.race([
-        sendLspRequest(processId, JSON.stringify(symbolRequest)),
-        timeout(5000)
-      ]);
-      this.log('LSP document symbol response:', response);
+      await sendLspRequest(processId, JSON.stringify(symbolRequest));
       
-      // Parse the response
-      if (response) {
-        try {
-          const parsed = JSON.parse(response);
-          
-          // Check for LSP errors
-          if (parsed.error) {
-            this.error('LSP error:', parsed.error);
-            return [];
-          }
-          
-          // Document symbols don't contain diagnostics, but this triggers LSP analysis
-          if (parsed.result) {
-            this.log('LSP symbols received:', parsed.result);
-            // The actual diagnostics should come via publishDiagnostics notifications
-            // For now, return empty array and rely on fallback diagnostics
-            return [];
-          }
-        } catch (parseError) {
-          this.error('Failed to parse LSP response:', parseError);
+      // Wait for the response
+      for (let i = 0; i < 100; i++) {
+        if (this.lspResponses.has(id)) {
+          const response = this.lspResponses.get(id);
+          this.lspResponses.delete(id);
+          return response.result;
         }
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-      // No diagnostics found
-      return [];
+      throw new Error('LSP request timeout');
       
     } catch (error) {
       this.error('Failed to request LSP diagnostics:', error);
-      if (error.message === 'LSP request timeout') {
-        this.log('LSP request timed out, using fallback diagnostics');
-      }
       return [];
     }
   }
