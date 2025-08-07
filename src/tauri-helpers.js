@@ -83,6 +83,34 @@ export async function shutdownAllLanguageServers() {
   }
 }
 
+/**
+ * Get the application's support directory path
+ */
+export async function getAppSupportDir() {
+  try {
+    const tauri = ensureTauri();
+    // This needs a corresponding command in the Rust backend
+    return await tauri.core.invoke('get_app_support_dir');
+  } catch (error) {
+    console.error('Failed to get app support dir:', error);
+    throw error;
+  }
+}
+
+/**
+ * Run a command in a specific directory
+ */
+export async function runCommand(command, args, cwd) {
+  try {
+    const tauri = ensureTauri();
+    // This needs a corresponding command in the Rust backend
+    return await tauri.core.invoke('run_command', { command, args, cwd });
+  } catch (error)
+ {
+    console.error(`Failed to run command "${command} ${args.join(' ')}":`, error);
+    throw error;
+  }
+}
 
 /**
  * Listen to LSP messages from the backend
@@ -90,7 +118,9 @@ export async function shutdownAllLanguageServers() {
 export async function listenToLspMessages(handler) {
   try {
     const tauri = ensureTauri();
-    return await tauri.event.listen('lsp_log_line', handler);
+    // Listen to both structured messages and raw log lines
+    await tauri.event.listen('lsp_message', (event) => handler({ event: 'lsp_message', payload: event.payload }));
+    await tauri.event.listen('lsp_log_line', (event) => handler({ event: 'lsp_log_line', payload: event.payload }));
   } catch (error) {
     console.error('Failed to listen to LSP messages:', error);
     throw error;

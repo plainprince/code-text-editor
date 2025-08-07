@@ -16,6 +16,29 @@ use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use tree_sitter::{Language, Parser, Node, Tree};
 
+#[tauri::command]
+fn get_app_support_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
+    match app_handle.path().app_support_dir() {
+        Ok(dir) => Ok(dir.to_string_lossy().to_string()),
+        Err(e) => Err(format!("Failed to get app support directory: {}", e)),
+    }
+}
+
+#[tauri::command]
+fn run_command(command: String, args: Vec<String>, cwd: String) -> Result<String, String> {
+    let output = Command::new(command)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| format!("Failed to execute command: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 // Language Server Management
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LanguageServerProcess {
@@ -1276,7 +1299,9 @@ fn main() {
             stop_language_server,
             shutdown_all_language_servers,
             check_command_exists,
-            parse_document_symbols
+            parse_document_symbols,
+            get_app_support_dir,
+            run_command
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

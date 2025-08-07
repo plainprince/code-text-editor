@@ -9,6 +9,7 @@ import {
   listenToLspMessages
 } from './tauri-helpers.js';
 import LanguageServerManager from './language-server-manager.js';
+import lsDepManager from './language-server-dep-manager.js';
 
 class DiagnosticsManager {
   constructor(fileExplorer) {
@@ -32,6 +33,7 @@ class DiagnosticsManager {
 
 
   async init() {
+    await lsDepManager.initialize();
     this.setupEventListeners();
     this.setupLanguageServers();
     this.log('DiagnosticsManager initialized');
@@ -145,62 +147,56 @@ class DiagnosticsManager {
   }
 
   setupLanguageServers() {
-    // Common language servers and their detection
     this.languageServers.set('js', {
-      name: 'TypeScript Language Server',
-      command: 'typescript-language-server',
+      name: 'ESLint',
+      command: 'vscode-eslint-server',
       args: ['--stdio'],
+      npmPackage: 'vscode-eslint-server',
+      type: 'npm',
       extensions: ['.js', '.jsx'],
-      installCommand: {
-        npm: 'npm install -g typescript-language-server typescript',
-        yarn: 'yarn global add typescript-language-server typescript',
-        description: 'JavaScript/TypeScript language server'
-      }
+      installCommand: 'npm install -g vscode-eslint-server',
+      description: 'ESLint language server for JavaScript/TypeScript'
     });
 
     this.languageServers.set('ts', {
-      name: 'TypeScript Language Server',
-      command: 'typescript-language-server',
-      args: ['--stdio'],
-      extensions: ['.ts', '.tsx'],
-      installCommand: {
-        npm: 'npm install -g typescript-language-server typescript',
-        yarn: 'yarn global add typescript-language-server typescript',
-        description: 'JavaScript/TypeScript language server'
-      }
+        name: 'ESLint',
+        command: 'vscode-eslint-server',
+        args: ['--stdio'],
+        npmPackage: 'vscode-eslint-server',
+        type: 'npm',
+        extensions: ['.ts', '.tsx'],
+        installCommand: 'npm install -g vscode-eslint-server',
+        description: 'ESLint language server for JavaScript/TypeScript'
     });
-
+    
     this.languageServers.set('py', {
       name: 'Pylsp',
       command: 'pylsp',
       args: [],
+      type: 'global',
       extensions: ['.py'],
-      installCommand: {
-        pip: 'pip install python-lsp-server',
-        description: 'Python language server'
-      }
+      installCommand: 'pip install python-lsp-server',
+      description: 'Python language server'
     });
 
     this.languageServers.set('rs', {
       name: 'Rust Analyzer',
       command: 'rust-analyzer',
-      args: [],
+      args: [], // No --stdio needed, it's the default
+      type: 'global',
       extensions: ['.rs'],
-      installCommand: {
-        rustup: 'rustup component add rust-analyzer',
-        description: 'Rust language server'
-      }
+      installCommand: 'rustup component add rust-analyzer',
+      description: 'Rust language server'
     });
 
     this.languageServers.set('go', {
       name: 'Gopls',
       command: 'gopls',
       args: [],
+      type: 'global',
       extensions: ['.go'],
-      installCommand: {
-        go: 'go install golang.org/x/tools/gopls@latest',
-        description: 'Go language server'
-      }
+      installCommand: 'go install golang.org/x/tools/gopls@latest',
+      description: 'Go language server'
     });
   }
 
