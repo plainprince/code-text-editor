@@ -16,7 +16,12 @@ class DiagnosticsManager {
     this.debugMode = true; // Enable debug logging
     this.lspResponses = new Map(); // Store responses from LSP
     this.init();
+
+    // Bind methods to ensure correct `this` context
+    this.handleLspMessage = this.handleLspMessage.bind(this);
+    this.refresh = this.refresh.bind(this);
   }
+
 
   async init() {
     this.setupEventListeners();
@@ -35,6 +40,16 @@ class DiagnosticsManager {
   }
 
   
+  log(message, ...args) {
+    if (this.debugMode) {
+      console.log('[DiagnosticsManager]', message, ...args);
+    }
+  }
+  
+  error(message, ...args) {
+    console.error('[DiagnosticsManager ERROR]', message, ...args);
+  }
+
   handleLspMessage(message) {
     try {
       const parsed = JSON.parse(message);
