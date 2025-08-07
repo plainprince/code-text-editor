@@ -90,7 +90,7 @@ export async function shutdownAllLanguageServers() {
 export async function listenToLspMessages(handler) {
   try {
     const tauri = ensureTauri();
-    return await tauri.event.listen('lsp_message', handler);
+    return await tauri.event.listen('lsp_log_line', handler);
   } catch (error) {
     console.error('Failed to listen to LSP messages:', error);
     throw error;

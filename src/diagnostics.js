@@ -35,12 +35,20 @@ class DiagnosticsManager {
     this.setupLanguageServers();
     this.log('DiagnosticsManager initialized');
     
-    // Listen for LSP messages from the backend
-    await listenToLspMessages(this.handleLspMessage);
+    // Listen for raw LSP log lines from the backend
+    await listenToLspMessages((event) => {
+      this.lspLogHandler(event.payload);
+    });
     
     // Expose to global scope for debugging
     window.languageServerManager = this.languageServerManager;
     window.diagnosticsManager = this;
+  }
+  
+  lspLogHandler(line) {
+    if (typeof line === 'string' && line.trim()) {
+      console.log('[Diagnostics LSP]', line.trim());
+    }
   }
 
   
@@ -54,36 +62,6 @@ class DiagnosticsManager {
     console.error('[DiagnosticsManager ERROR]', message, ...args);
   }
 
-  handleLspMessage(message) {
-    this.log('Raw LSP message:', message);
-    let parsed;
-    try {
-      if (typeof message === 'string') {
-        parsed = JSON.parse(message);
-      } else if (typeof message === 'object' && message !== null) {
-        parsed = message;
-      } else {
-        this.error('Received LSP message of unknown type:', message);
-        return;
-      }
-
-      if (parsed.id) {
-        // This is a response to a request
-        this.lspResponses.set(parsed.id, parsed);
-      } else if (parsed.method === 'textDocument/publishDiagnostics') {
-        // This is a notification with diagnostics
-        const diagnostics = this.convertLspDiagnostics(parsed.params.diagnostics);
-        const filePath = parsed.params.uri.replace('file://', '');
-        this.diagnostics.set(filePath, diagnostics);
-        this.log(`Received ${diagnostics.length} diagnostics for ${filePath}`);
-        this.renderDiagnostics();
-        const count = this.getFileDiagnosticsCount(window.currentFilePath);
-        this.updateStatus(count > 0 ? `Ready (${count} issues)` : 'Ready (no issues found)');
-      }
-    } catch (error) {
-      this.error('Failed to handle LSP message:', error);
-    }
-  }
 
   
   error(message, ...args) {
@@ -455,27 +433,59 @@ class DiagnosticsManager {
   
   async ensureLanguageServerRunning(serverInfo, language) {
     const existing = this.activeLanguageServers.get(language);
-    if (existing) {
-      this.log('Language server already running for:', language);
+    if (existing && existing.initialized) {
+      this.log('Language server already running and initialized for:', language);
       return existing.processId;
     }
-    
+
     try {
       this.log('Starting language server:', serverInfo.command, serverInfo.args);
-      
       const processId = await startLanguageServer(serverInfo.command, serverInfo.args, language);
-      
+
       this.activeLanguageServers.set(language, {
         processId,
         serverInfo,
-        startTime: Date.now()
+        startTime: Date.now(),
+        initialized: false
       });
-      
+
       this.log('Language server started with process ID:', processId);
-      return processId;
+
+      // Perform LSP handshake
+      const rootUri = `file://${window.fileExplorer.rootFolder}`;
+      const requestId = Date.now();
+      const initializeRequest = {
+        jsonrpc: '2.0',
+        id: requestId,
+        method: 'initialize',
+        params: {
+          processId: null,
+          rootUri: rootUri,
+          capabilities: {}
+        }
+      };
+
+      await sendLspRequest(processId, JSON.stringify(initializeRequest));
+      this.log('Sent initialize request to server');
+
+      // For now, we'll optimistically assume initialization works and send the initialized notification
+      const initializedNotification = {
+        jsonrpc: '2.0',
+        method: 'initialized',
+        params: {}
+      };
+      await sendLspNotification(processId, JSON.stringify(initializedNotification));
+      this.log('Sent initialized notification to server');
       
+      const serverData = this.activeLanguageServers.get(language);
+      if (serverData) {
+        serverData.initialized = true;
+      }
+
+      return processId;
+
     } catch (error) {
-      this.error('Failed to start language server:', error);
+      this.error('Failed to start or initialize language server:', error);
       return null;
     }
   }
