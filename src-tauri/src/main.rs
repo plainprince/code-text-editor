@@ -1126,7 +1126,12 @@ async fn send_lsp_request(
                             // Small delay to allow more data to arrive
                             std::thread::sleep(std::time::Duration::from_millis(10));
                         },
-                        _ => break,
+                        Ok(0) => {
+                            // No data available, but don't break immediately
+                            attempts += 1;
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        },
+                        Err(_) => break,
                     }
                 }
                 

@@ -648,6 +648,11 @@ class DiagnosticsManager {
     this.log('Requesting diagnostics via LSP for:', filePath);
     
     try {
+      // Add timeout to prevent hanging
+      const timeout = (ms) => new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('LSP request timeout')), ms)
+      );
+      
       // If document is already open, send a change notification instead
       if (this.openDocuments.has(filePath)) {
         this.log('Document already open, sending change notification');
@@ -666,13 +671,24 @@ class DiagnosticsManager {
           }
         };
         
-        await sendLspRequest(processId, JSON.stringify(changeNotification));
+        this.log('Sending change notification...');
+        await Promise.race([
+          sendLspRequest(processId, JSON.stringify(changeNotification)),
+          timeout(5000)
+        ]);
+        this.log('Change notification sent successfully');
       } else {
         // Document not open, send didOpen
-        await this.sendDidOpenNotification(processId, filePath, language, content);
+        this.log('Sending didOpen notification...');
+        await Promise.race([
+          this.sendDidOpenNotification(processId, filePath, language, content),
+          timeout(5000)
+        ]);
+        this.log('DidOpen notification sent successfully');
       }
       
       // Request document symbols to trigger analysis
+      this.log('Requesting document symbols...');
       const symbolRequest = {
         jsonrpc: '2.0',
         id: Date.now(),
@@ -684,7 +700,10 @@ class DiagnosticsManager {
         }
       };
       
-      const response = await sendLspRequest(processId, JSON.stringify(symbolRequest));
+      const response = await Promise.race([
+        sendLspRequest(processId, JSON.stringify(symbolRequest)),
+        timeout(5000)
+      ]);
       this.log('LSP document symbol response:', response);
       
       // Parse the response
@@ -715,6 +734,9 @@ class DiagnosticsManager {
       
     } catch (error) {
       this.error('Failed to request LSP diagnostics:', error);
+      if (error.message === 'LSP request timeout') {
+        this.log('LSP request timed out, using fallback diagnostics');
+      }
       return [];
     }
   }
