@@ -1073,6 +1073,43 @@ fn get_generic_name(node: Node, source_code: &str) -> Option<String> {
 use std::io::BufRead;
 
 #[tauri::command(rename_all = "snake_case")]
+async fn start_lsp_listener(
+    process_id: String,
+    state: tauri::State<'_, LanguageServerMap>,
+    app_handle: tauri::AppHandle
+) -> Result<(), String> {
+    let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+    if let Some(child) = processes.get_mut(&process_id) {
+        if let Some(stdout) = child.stdout.take() {
+            let listener_app_handle = app_handle.clone();
+            std::thread::spawn(move || {
+                let reader = std::io::BufReader::new(stdout);
+                let mut buffer = String::new();
+
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        buffer.push_str(&line);
+                        buffer.push_str("\r\n");
+
+                        if buffer.contains("\r\n\r\n") {
+                            if let Some(json_str) = buffer.split("\r\n\r\n").nth(1) {
+                                let _ = listener_app_handle.emit("lsp_message", json_str);
+                            }
+                            buffer.clear();
+                        }
+                    }
+                }
+            });
+            Ok(())
+        } else {
+            Err("Failed to take stdout".to_string())
+        }
+    } else {
+        Err(format!("Language server process not found: {}", process_id))
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn start_language_server(
     command: String,
     args: Vec<String>,
@@ -1316,6 +1353,7 @@ fn main() {
             send_lsp_request,
             send_lsp_notification,
             stop_language_server,
+            start_lsp_listener,
             check_command_exists,
             parse_document_symbols
         ])

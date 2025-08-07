@@ -22,11 +22,12 @@ class DiagnosticsManager {
     this.activeLanguageServers = new Map(); // language -> process info
     this.debugMode = true; // Enable debug logging
     this.lspResponses = new Map(); // Store responses from LSP
-    this.init();
 
     // Bind methods to ensure correct `this` context
     this.handleLspMessage = this.handleLspMessage.bind(this);
     this.refresh = this.refresh.bind(this);
+
+    this.init();
   }
 
 
