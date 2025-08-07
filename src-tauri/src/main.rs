@@ -1111,23 +1111,85 @@ async fn send_lsp_request(
             
             // Try to read response from stdout
             if let Some(stdout) = process.stdout.as_mut() {
-                let mut buffer = vec![0; 4096];
-                match stdout.read(&mut buffer) {
-                    Ok(bytes_read) if bytes_read > 0 => {
-                        let response = String::from_utf8_lossy(&buffer[..bytes_read]);
-                        // Parse LSP response (skip Content-Length header)
-                        if let Some(json_start) = response.find('{') {
-                            let json_part = &response[json_start..];
-                            Ok(json_part.to_string())
+                let mut all_data = Vec::new();
+                let mut attempts = 0;
+                const MAX_ATTEMPTS: usize = 10;
+                
+                // Read multiple times to capture all LSP messages
+                while attempts < MAX_ATTEMPTS {
+                    let mut buffer = vec![0; 4096];
+                    match stdout.read(&mut buffer) {
+                        Ok(bytes_read) if bytes_read > 0 => {
+                            all_data.extend_from_slice(&buffer[..bytes_read]);
+                            attempts += 1;
+                            
+                            // Small delay to allow more data to arrive
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        },
+                        _ => break,
+                    }
+                }
+                
+                if !all_data.is_empty() {
+                    let full_response = String::from_utf8_lossy(&all_data);
+                    
+                    // Parse multiple LSP messages - look for the actual response (not log messages)
+                    let mut best_response = None;
+                    let mut current_pos = 0;
+                    
+                    while let Some(content_length_pos) = full_response[current_pos..].find("Content-Length:") {
+                        let abs_pos = current_pos + content_length_pos;
+                        if let Some(header_end) = full_response[abs_pos..].find("\r\n\r\n") {
+                            let json_start = abs_pos + header_end + 4;
+                            if let Some(json_end) = full_response[json_start..].find("\r\n\r\n").or_else(|| {
+                                // Try to find next Content-Length or end of string
+                                full_response[json_start..].find("Content-Length:").or_else(|| {
+                                    Some(full_response.len() - json_start)
+                                })
+                            }) {
+                                let json_part = &full_response[json_start..json_start + json_end];
+                                
+                                // Try to parse as JSON to see if it's valid
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_part) {
+                                    // Prefer responses with "result" or "error" (actual responses)
+                                    // Skip "window/logMessage" and other notifications
+                                    if parsed.get("method").and_then(|m| m.as_str()) != Some("window/logMessage") {
+                                        if parsed.get("result").is_some() || parsed.get("error").is_some() {
+                                            best_response = Some(json_part.to_string());
+                                            break;
+                                        } else if best_response.is_none() {
+                                            // Keep any non-log message as fallback
+                                            best_response = Some(json_part.to_string());
+                                        }
+                                    }
+                                }
+                                current_pos = json_start + json_end;
+                            } else {
+                                break;
+                            }
                         } else {
-                            // Return mock response if parsing fails
+                            break;
+                        }
+                    }
+                    
+                    if let Some(response) = best_response {
+                        Ok(response)
+                    } else {
+                        // Fallback: return the first valid JSON we find
+                        if let Some(json_start) = full_response.find('{') {
+                            let remaining = &full_response[json_start..];
+                            if let Some(json_end) = remaining.find("\r\n\r\n").or_else(|| remaining.find("Content-Length:")) {
+                                Ok(remaining[..json_end].to_string())
+                            } else {
+                                Ok(remaining.to_string())
+                            }
+                        } else {
                             Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
                         }
-                    },
-                    _ => {
-                        // Return mock response with realistic structure
-                        Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
                     }
+                } else {
+                    // Return mock response with realistic structure
+                    Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
                 }
             } else {
                 // Return mock response if no stdout
