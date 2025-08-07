@@ -1231,6 +1231,28 @@ async fn stop_language_server(
     }
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn send_lsp_notification(
+    process_id: String,
+    message: String,
+    state: tauri::State<'_, LanguageServerMap>
+) -> Result<(), String> {
+    let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+    
+    if let Some(process) = processes.get_mut(&process_id) {
+        if let Some(stdin) = process.stdin.as_mut() {
+            let notification = format!("Content-Length: {}\r\n\r\n{}", message.len(), message);
+            stdin.write_all(notification.as_bytes()).map_err(|e| format!("Failed to write to process: {}", e))?;
+            stdin.flush().map_err(|e| format!("Failed to flush stdin: {}", e))?;
+            Ok(())
+        } else {
+            Err("Process stdin not available".to_string())
+        }
+    } else {
+        Err(format!("Language server process not found: {}", process_id))
+    }
+}
+
 fn main() {
     let terminal_sessions: TerminalSessions = Arc::new(Mutex::new(HashMap::new()));
     let clipboard_state: ClipboardState = Arc::new(Mutex::new(None));
@@ -1266,6 +1288,7 @@ fn main() {
             search_in_files,
             start_language_server,
             send_lsp_request,
+            send_lsp_notification,
             stop_language_server,
             check_command_exists,
             parse_document_symbols

@@ -55,6 +55,23 @@ export async function sendLspRequest(processId, message) {
 }
 
 /**
+ * Send an LSP notification to a language server process
+ */
+export async function sendLspNotification(processId, message) {
+  try {
+    const tauri = ensureTauri();
+    await tauri.core.invoke('send_lsp_notification', {
+      process_id: processId,
+      message
+    });
+  } catch (error) {
+    console.error('Failed to send LSP notification:', error);
+    throw error;
+  }
+}
+
+
+/**
  * Write a text file
  */
 export async function writeTextFile(filePath, content) {
