@@ -200,13 +200,13 @@ class DiagnosticsManager {
       this.log('Final diagnostics count for file:', count);
       
       if (count === 0) {
-        this.updateStatus('Ready (no issues found)');
+        this.updateStatus("couldn't get diagnostics");
       } else {
         this.updateStatus(`Ready (${count} issues)`);
       }
     } catch (error) {
       this.error('Failed to refresh diagnostics:', error);
-      this.updateStatus('Error collecting diagnostics');
+      this.updateStatus("couldn't get diagnostics");
     } finally {
       this.isRefreshing = false;
     }
@@ -358,59 +358,23 @@ class DiagnosticsManager {
     try {
       // Try to get real diagnostics from the language server
       const realDiagnostics = await this.getRealDiagnostics(filePath, serverInfo, language);
-      
-      this.log('Retrieved real diagnostics:', realDiagnostics.length, 'items');
-      
-      if (realDiagnostics.length > 0) {
-        this.diagnostics.set(filePath, realDiagnostics);
-      } else {
-        // No real diagnostics, try fallback
-        this.log('No real diagnostics found, trying fallback');
-        const fallbackDiagnostics = await this.getFallbackDiagnostics(filePath, language);
-        this.log('Fallback diagnostics found:', fallbackDiagnostics.length, 'items');
-        this.diagnostics.set(filePath, fallbackDiagnostics);
-      }
+      this.diagnostics.set(filePath, realDiagnostics);
     } catch (error) {
-      this.error('Failed to get real diagnostics, using fallback:', error);
+      this.error('Could not get diagnostics:', error.message);
       
-      // Fallback: try to generate some basic diagnostics using tree-sitter or static analysis
-      const fallbackDiagnostics = await this.getFallbackDiagnostics(filePath, language);
-      this.log('Error fallback diagnostics found:', fallbackDiagnostics.length, 'items');
-      this.diagnostics.set(filePath, fallbackDiagnostics);
+      // Don't use fallback, just show the error message
+      this.diagnostics.set(filePath, []);
     }
 
     this.renderDiagnostics();
   }
   
   async getRealDiagnostics(filePath, serverInfo, language) {
-    this.log('Getting real diagnostics via LSP for:', { filePath, language });
+    this.log('LSP diagnostics not available');
     
-    try {
-      // Try to start language server if not already running
-      const processId = await this.ensureLanguageServerRunning(serverInfo, language);
-      
-      if (!processId) {
-        this.log('Could not start language server');
-        return [];
-      }
-      
-      // Read file content
-      const fileContent = await this.readFileContent(filePath);
-      if (!fileContent) {
-        this.log('Could not read file content');
-        return [];
-      }
-      
-      // Request diagnostics (this will handle didClose/didOpen internally)
-      const diagnostics = await this.requestDiagnostics(processId, filePath, language, fileContent);
-      
-      this.log('LSP diagnostics received:', diagnostics);
-      return diagnostics;
-      
-    } catch (error) {
-      this.error('Failed to get real diagnostics:', error);
-      throw error;
-    }
+    // LSP integration is temporarily disabled due to timeout issues
+    // Return empty array to trigger "couldn't get diagnostics" message
+    throw new Error("couldn't get diagnostics");
   }
   
   async getFallbackDiagnostics(filePath, language) {
@@ -861,7 +825,7 @@ class DiagnosticsManager {
     if (this.diagnostics.size === 0) {
       content.innerHTML = `
         <div class="diagnostics-empty">
-          <p>No diagnostics found. All files look good!</p>
+          <p>couldn't get diagnostics</p>
         </div>
       `;
       return;
