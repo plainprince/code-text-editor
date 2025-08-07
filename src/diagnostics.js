@@ -6,7 +6,6 @@ import {
   startLanguageServer, 
   sendLspRequest, 
   sendLspNotification,
-  startLspListener,
   listenToLspMessages
 } from './tauri-helpers.js';
 import LanguageServerManager from './language-server-manager.js';
@@ -459,10 +458,6 @@ class DiagnosticsManager {
       });
       
       this.log('Language server started with process ID:', processId);
-      
-      // Start listener for this process
-      await startLspListener(processId);
-      
       return processId;
       
     } catch (error) {

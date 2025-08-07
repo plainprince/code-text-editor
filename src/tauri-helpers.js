@@ -70,20 +70,6 @@ export async function sendLspNotification(processId, message) {
   }
 }
 
-/**
- * Start listening to LSP events for a specific process
- */
-export async function startLspListener(processId) {
-  try {
-    const tauri = ensureTauri();
-    await tauri.core.invoke('start_lsp_listener', {
-      process_id: processId
-    });
-  } catch (error) {
-    console.error('Failed to start LSP listener:', error);
-    throw error;
-  }
-}
 
 /**
  * Listen to LSP messages from the backend
