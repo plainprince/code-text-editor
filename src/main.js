@@ -1436,8 +1436,8 @@ async function initTerminal() {
 // Initialize diagnostics system
 async function initDiagnostics() {
   try {
-    // Initialize diagnostics manager
-    diagnosticsManager = new DiagnosticsManager();
+    // Initialize diagnostics manager, passing the file explorer instance
+    diagnosticsManager = new DiagnosticsManager(fileExplorer);
     
     // Make manager globally available
     window.diagnosticsManager = diagnosticsManager;

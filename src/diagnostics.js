@@ -11,7 +11,8 @@ import {
 import LanguageServerManager from './language-server-manager.js';
 
 class DiagnosticsManager {
-  constructor() {
+  constructor(fileExplorer) {
+    this.fileExplorer = fileExplorer;
     this.diagnostics = new Map(); // filepath -> diagnostics array
     this.languageServers = new Map(); // file extension -> LSP info
     this.openDocuments = new Set(); // Track which documents are open in LSP
@@ -456,7 +457,7 @@ class DiagnosticsManager {
       this.log('Language server started with process ID:', processId);
 
       // Perform LSP handshake
-      const rootUri = `file://${window.fileExplorer.rootFolder}`;
+      const rootUri = `file://${this.fileExplorer.rootFolder}`;
       const requestId = Date.now();
       const initializeRequest = {
         jsonrpc: '2.0',
