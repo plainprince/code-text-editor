@@ -438,6 +438,11 @@ class DiagnosticsManager {
     }
 
     try {
+      if (!window.fileExplorer || !window.fileExplorer.rootFolder) {
+        this.log('Cannot start language server: No workspace is open.');
+        return null;
+      }
+
       this.log('Starting language server:', serverInfo.command, serverInfo.args);
       const processId = await startLanguageServer(serverInfo.command, serverInfo.args, language);
 
