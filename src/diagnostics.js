@@ -1,7 +1,14 @@
 // diagnostics.js - Project diagnostics via LSP servers
 
 import { readFile } from './file-system.js';
-import { checkCommandExists, startLanguageServer, sendLspRequest, sendLspNotification } from './tauri-helpers.js';
+import { 
+  checkCommandExists, 
+  startLanguageServer, 
+  sendLspRequest, 
+  sendLspNotification,
+  startLspListener,
+  listenToLspMessages
+} from './tauri-helpers.js';
 import LanguageServerManager from './language-server-manager.js';
 
 class DiagnosticsManager {
@@ -29,10 +36,7 @@ class DiagnosticsManager {
     this.log('DiagnosticsManager initialized');
     
     // Listen for LSP messages from the backend
-    const { listen } = await import(window.__TAURI_INTERNALS__.plugins.event.js);
-    await listen('lsp_message', (event) => {
-      this.handleLspMessage(event.payload);
-    });
+    await listenToLspMessages(this.handleLspMessage);
     
     // Expose to global scope for debugging
     window.languageServerManager = this.languageServerManager;
@@ -456,8 +460,7 @@ class DiagnosticsManager {
       this.log('Language server started with process ID:', processId);
       
       // Start listener for this process
-      const { invoke } = await import(window.__TAURI_INTERNALS__.plugins.shell.js);
-      await invoke('start_lsp_listener', { process_id: processId });
+      await startLspListener(processId);
       
       return processId;
       
