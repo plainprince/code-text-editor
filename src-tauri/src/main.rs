@@ -6,19 +6,18 @@
 use std::fs;
 use std::path::Path;
 use serde_json::Value;
-use tauri::Manager;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Manager, Emitter};
 use std::io::{Read, Write};
 use std::process::{Command, Stdio, Child};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use tree_sitter::{Language, Parser, Node, Tree};
 
 #[tauri::command]
 fn get_app_support_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
-    match app_handle.path().app_support_dir() {
+    match app_handle.path().app_data_dir() {
         Ok(dir) => Ok(dir.to_string_lossy().to_string()),
         Err(e) => Err(format!("Failed to get app support directory: {}", e)),
     }
@@ -185,7 +184,7 @@ fn get_settings_file_path(app_handle: tauri::AppHandle) -> Result<String, String
             let settings_file = config_dir.join("settings.json");
             Ok(settings_file.to_string_lossy().to_string())
         },
-        Err(e) => Err(format!("Failed to get config directory: {}", e))
+        Err(e) => Err(format!("Failed to get config directory: {}", e)),
     }
 }
 
