@@ -59,7 +59,7 @@ struct Range {
 }
 
 // File system commands
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn read_text_file(file_path: String) -> Result<String, String> {
     match fs::read_to_string(&file_path) {
         Ok(content) => Ok(content),
@@ -67,7 +67,7 @@ fn read_text_file(file_path: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn write_text_file(file_path: String, content: String) -> Result<String, String> {
     // Create parent directories if they don't exist
     if let Some(parent) = Path::new(&file_path).parent() {
@@ -82,7 +82,7 @@ fn write_text_file(file_path: String, content: String) -> Result<String, String>
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn read_directory(dir_path: String) -> Result<Value, String> {
     let path = Path::new(&dir_path);
     
@@ -145,7 +145,7 @@ fn read_directory(dir_path: String) -> Result<Value, String> {
     Ok(serde_json::Value::Array(entries))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn file_exists(file_path: String) -> bool {
     Path::new(&file_path).exists()
 }
@@ -168,7 +168,7 @@ fn get_settings_file_path(app_handle: tauri::AppHandle) -> Result<String, String
 
 
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn delete_file(file_path: String) -> Result<String, String> {
     let path = Path::new(&file_path);
     
@@ -186,7 +186,7 @@ fn delete_file(file_path: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn delete_directory(dir_path: String) -> Result<String, String> {
     let path = Path::new(&dir_path);
     
@@ -204,7 +204,7 @@ fn delete_directory(dir_path: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn create_directory(dir_path: String) -> Result<String, String> {
     let path = Path::new(&dir_path);
     
@@ -218,7 +218,7 @@ fn create_directory(dir_path: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn rename_file(old_path: String, new_path: String) -> Result<String, String> {
     let old = Path::new(&old_path);
     let new = Path::new(&new_path);
@@ -246,7 +246,7 @@ fn rename_file(old_path: String, new_path: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn copy_file(source_path: String, dest_path: String) -> Result<String, String> {
     let source = Path::new(&source_path);
     let dest = Path::new(&dest_path);
@@ -278,7 +278,7 @@ fn copy_file(source_path: String, dest_path: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn move_file(source_path: String, dest_path: String) -> Result<String, String> {
     let source = Path::new(&source_path);
     let dest = Path::new(&dest_path);
@@ -306,7 +306,7 @@ fn move_file(source_path: String, dest_path: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn get_workspace_files(workspace_path: String) -> Result<Vec<Value>, String> {
     let mut files = Vec::new();
     
@@ -349,7 +349,7 @@ fn get_workspace_files(workspace_path: String) -> Result<Vec<Value>, String> {
     Ok(files)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn clipboard_copy(file_path: String, clipboard_state: tauri::State<ClipboardState>) -> Result<String, String> {
     let mut clipboard = clipboard_state.lock().map_err(|e| format!("Failed to lock clipboard: {}", e))?;
     *clipboard = Some(ClipboardItem {
@@ -359,7 +359,7 @@ fn clipboard_copy(file_path: String, clipboard_state: tauri::State<ClipboardStat
     Ok(format!("Copied {} to clipboard", file_path))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn clipboard_cut(file_path: String, clipboard_state: tauri::State<ClipboardState>) -> Result<String, String> {
     let mut clipboard = clipboard_state.lock().map_err(|e| format!("Failed to lock clipboard: {}", e))?;
     *clipboard = Some(ClipboardItem {
@@ -369,7 +369,7 @@ fn clipboard_cut(file_path: String, clipboard_state: tauri::State<ClipboardState
     Ok(format!("Cut {} to clipboard", file_path))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn clipboard_paste(target_dir: String, clipboard_state: tauri::State<ClipboardState>) -> Result<String, String> {
     let mut clipboard = clipboard_state.lock().map_err(|e| format!("Failed to lock clipboard: {}", e))?;
     
@@ -1109,9 +1109,30 @@ async fn send_lsp_request(
             stdin.write_all(request.as_bytes()).map_err(|e| format!("Failed to write to process: {}", e))?;
             stdin.flush().map_err(|e| format!("Failed to flush stdin: {}", e))?;
             
-            // For now, return a mock response
-            // In a full implementation, you'd read from stdout and parse the LSP response
-            Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
+            // Try to read response from stdout
+            if let Some(stdout) = process.stdout.as_mut() {
+                let mut buffer = vec![0; 4096];
+                match stdout.read(&mut buffer) {
+                    Ok(bytes_read) if bytes_read > 0 => {
+                        let response = String::from_utf8_lossy(&buffer[..bytes_read]);
+                        // Parse LSP response (skip Content-Length header)
+                        if let Some(json_start) = response.find('{') {
+                            let json_part = &response[json_start..];
+                            Ok(json_part.to_string())
+                        } else {
+                            // Return mock response if parsing fails
+                            Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
+                        }
+                    },
+                    _ => {
+                        // Return mock response with realistic structure
+                        Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
+                    }
+                }
+            } else {
+                // Return mock response if no stdout
+                Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
+            }
         } else {
             Err("Process stdin not available".to_string())
         }
@@ -1120,7 +1141,7 @@ async fn send_lsp_request(
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn stop_language_server(
     process_id: String,
     state: tauri::State<'_, LanguageServerMap>

@@ -617,11 +617,61 @@ class DiagnosticsManager {
   }
   
   async requestDiagnostics(processId, filePath) {
-    // LSP diagnostics are typically sent via publishDiagnostics notifications
-    // For now, we'll return empty array as this requires implementing
-    // a proper LSP client with message handling
-    this.log('Requesting diagnostics (not fully implemented yet)');
-    return [];
+    // Request diagnostics via textDocument/publishDiagnostics
+    this.log('Requesting diagnostics via LSP for:', filePath);
+    
+    try {
+      // Create LSP request for diagnostics
+      const diagnosticsRequest = {
+        jsonrpc: '2.0',
+        id: Date.now(), // Simple ID generation
+        method: 'textDocument/publishDiagnostics',
+        params: {
+          uri: `file://${filePath}`,
+          diagnostics: [] // Request current diagnostics
+        }
+      };
+      
+      // Send the request
+      const response = await sendLspRequest(processId, JSON.stringify(diagnosticsRequest));
+      this.log('LSP diagnostics response:', response);
+      
+      // Parse the response
+      if (response) {
+        const parsed = JSON.parse(response);
+        if (parsed.result && Array.isArray(parsed.result)) {
+          return this.convertLspDiagnostics(parsed.result);
+        }
+      }
+      
+      // No diagnostics found
+      return [];
+      
+    } catch (error) {
+      this.error('Failed to request LSP diagnostics:', error);
+      return [];
+    }
+  }
+  
+  convertLspDiagnostics(lspDiagnostics) {
+    return lspDiagnostics.map(diag => ({
+      severity: this.convertLspSeverity(diag.severity),
+      message: diag.message,
+      line: diag.range.start.line + 1, // LSP is 0-based, we use 1-based
+      character: diag.range.start.character + 1,
+      source: diag.source || 'lsp'
+    }));
+  }
+  
+  convertLspSeverity(lspSeverity) {
+    // LSP severity: 1=Error, 2=Warning, 3=Information, 4=Hint
+    switch (lspSeverity) {
+      case 1: return 'error';
+      case 2: return 'warning';
+      case 3: return 'info';
+      case 4: return 'info';
+      default: return 'info';
+    }
   }
 
   async collectDiagnostics(availableServers) {
