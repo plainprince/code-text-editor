@@ -1103,19 +1103,31 @@ async fn start_language_server(
 
             let listener_app_handle = app_handle.clone();
             std::thread::spawn(move || {
-                let reader = std::io::BufReader::new(stdout);
-                let mut buffer = String::new();
+                let mut reader = std::io::BufReader::new(stdout);
+                loop {
+                    let mut headers = std::collections::HashMap::new();
+                    loop {
+                        let mut header = String::new();
+                        if reader.read_line(&mut header).unwrap_or(0) == 0 {
+                            return; // EOF or error
+                        }
+                        if header.trim().is_empty() {
+                            break; // End of headers
+                        }
+                        let parts: Vec<&str> = header.trim().splitn(2, ": ").collect();
+                        if parts.len() == 2 {
+                            headers.insert(parts[0].to_string(), parts[1].to_string());
+                        }
+                    }
 
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        buffer.push_str(&line);
-                        buffer.push_str("\r\n");
-
-                        if buffer.contains("\r\n\r\n") {
-                            if let Some(json_str) = buffer.split("\r\n\r\n").nth(1) {
-                                let _ = listener_app_handle.emit("lsp_message", json_str.to_string());
+                    if let Some(len_str) = headers.get("Content-Length") {
+                        if let Ok(len) = len_str.parse::<usize>() {
+                            let mut body_buffer = vec![0; len];
+                            if reader.read_exact(&mut body_buffer).is_ok() {
+                                if let Ok(body_str) = String::from_utf8(body_buffer) {
+                                    let _ = listener_app_handle.emit("lsp_message", body_str);
+                                }
                             }
-                            buffer.clear();
                         }
                     }
                 }
