@@ -70,6 +70,19 @@ export async function sendLspNotification(processId, message) {
   }
 }
 
+/**
+ * Shuts down all running language servers.
+ */
+export async function shutdownAllLanguageServers() {
+  try {
+    const tauri = ensureTauri();
+    await tauri.core.invoke('shutdown_all_language_servers');
+  } catch (error) {
+    console.error('Failed to shutdown language servers:', error);
+    // Don't throw, as this is a cleanup operation
+  }
+}
+
 
 /**
  * Listen to LSP messages from the backend

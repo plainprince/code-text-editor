@@ -7,10 +7,14 @@ import { TerminalManager } from './terminal.js';
 import DiagnosticsManager from './diagnostics.js';
 import DraggablePanes from './draggable-panes.js';
 import { getWorkspaceFiles, searchInFiles } from './file-system.js';
-import { writeTextFile } from './tauri-helpers.js';
+import { writeTextFile, shutdownAllLanguageServers } from './tauri-helpers.js';
 import OutlinePanel from './outline.js';
 
 import * as monaco from 'monaco-editor';
+
+window.addEventListener('beforeunload', () => {
+  shutdownAllLanguageServers();
+});
 
 
 // Global state

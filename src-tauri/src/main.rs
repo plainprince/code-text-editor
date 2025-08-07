@@ -1073,6 +1073,15 @@ fn get_generic_name(node: Node, source_code: &str) -> Option<String> {
 use std::io::BufRead;
 
 #[tauri::command(rename_all = "snake_case")]
+async fn shutdown_all_language_servers(state: tauri::State<'_, LanguageServerMap>) -> Result<(), String> {
+    let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+    for (_, mut child) in processes.drain() {
+        let _ = child.kill();
+    }
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn start_language_server(
     command: String,
     args: Vec<String>,
@@ -1317,6 +1326,7 @@ fn main() {
             send_lsp_request,
             send_lsp_notification,
             stop_language_server,
+            shutdown_all_language_servers,
             check_command_exists,
             parse_document_symbols
         ])

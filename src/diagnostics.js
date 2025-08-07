@@ -55,16 +55,30 @@ class DiagnosticsManager {
   }
 
   handleLspMessage(message) {
+    this.log('Raw LSP message:', message);
+    let parsed;
     try {
-      const parsed = JSON.parse(message);
+      if (typeof message === 'string') {
+        parsed = JSON.parse(message);
+      } else if (typeof message === 'object' && message !== null) {
+        parsed = message;
+      } else {
+        this.error('Received LSP message of unknown type:', message);
+        return;
+      }
+
       if (parsed.id) {
         // This is a response to a request
         this.lspResponses.set(parsed.id, parsed);
       } else if (parsed.method === 'textDocument/publishDiagnostics') {
-        // This is a notification
+        // This is a notification with diagnostics
         const diagnostics = this.convertLspDiagnostics(parsed.params.diagnostics);
-        this.diagnostics.set(parsed.params.uri.replace('file://', ''), diagnostics);
+        const filePath = parsed.params.uri.replace('file://', '');
+        this.diagnostics.set(filePath, diagnostics);
+        this.log(`Received ${diagnostics.length} diagnostics for ${filePath}`);
         this.renderDiagnostics();
+        const count = this.getFileDiagnosticsCount(window.currentFilePath);
+        this.updateStatus(count > 0 ? `Ready (${count} issues)` : 'Ready (no issues found)');
       }
     } catch (error) {
       this.error('Failed to handle LSP message:', error);
