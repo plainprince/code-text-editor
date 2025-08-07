@@ -24,6 +24,7 @@ class DiagnosticsManager {
     this.lspResponses = new Map(); // Store responses from LSP
 
     // Bind methods to ensure correct `this` context
+    this.handleLspMessage = this.handleLspMessage.bind(this);
     this.refresh = this.refresh.bind(this);
 
     this.init();
@@ -35,9 +36,13 @@ class DiagnosticsManager {
     this.setupLanguageServers();
     this.log('DiagnosticsManager initialized');
     
-    // Listen for raw LSP log lines from the backend
-    await listenToLspMessages((event) => {
-      this.lspLogHandler(event.payload);
+    // Listen for structured LSP messages and raw log lines
+    listenToLspMessages((event) => {
+      if (event.event === 'lsp_message') {
+        this.handleLspMessage(event.payload);
+      } else if (event.event === 'lsp_log_line') {
+        this.lspLogHandler(event.payload);
+      }
     });
     
     // Expose to global scope for debugging
@@ -48,6 +53,44 @@ class DiagnosticsManager {
   lspLogHandler(line) {
     if (typeof line === 'string' && line.trim()) {
       console.log('[Diagnostics LSP]', line.trim());
+    }
+  }
+
+  handleLspMessage(message) {
+    try {
+      this.log('Raw LSP message:', message);
+      if (typeof message === 'string') {
+        // Find the start of the JSON content
+        const jsonStart = message.indexOf('{"jsonrpc"');
+        if (jsonStart === -1) {
+          this.log('LSP message does not seem to be a JSON-RPC object, ignoring:', message);
+          return;
+        }
+        
+        const jsonString = message.substring(jsonStart);
+        const lspData = JSON.parse(jsonString);
+        this.log('Parsed LSP data:', lspData);
+
+        if (lspData.id && (lspData.result || lspData.error)) {
+          // This is a response to a request
+          this.lspResponses.set(lspData.id, lspData);
+          this.log(`Stored response for request ID: ${lspData.id}`);
+        } else if (lspData.method === 'textDocument/publishDiagnostics') {
+          // This is a diagnostics notification
+          const diagnostics = this.convertLspDiagnostics(lspData.params.diagnostics);
+          const filePath = lspData.params.uri.replace('file://', '');
+          this.diagnostics.set(filePath, diagnostics);
+          this.log(`Received diagnostics for ${filePath}:`, diagnostics.length, 'issues');
+          this.renderDiagnostics();
+          this.updateStatus(`Ready (${diagnostics.length} issues)`);
+        } else if (lspData.method === 'window/logMessage') {
+          this.log('[LSP Server Log]', `(${lspData.params.type})`, lspData.params.message);
+        } else {
+          this.log('Unhandled LSP method:', lspData.method);
+        }
+      }
+    } catch (error) {
+      this.error('Failed to handle LSP message:', error, 'Original message:', message);
     }
   }
 
@@ -439,8 +482,20 @@ class DiagnosticsManager {
     }
 
     try {
-      if (!window.fileExplorer || !window.fileExplorer.rootFolder) {
-        this.log('Cannot start language server: No workspace is open.');
+      // Determine the root URI for the language server.
+      // Priority: 1. Workspace folder. 2. Directory of the current file.
+      let rootUri = null;
+      if (this.fileExplorer && this.fileExplorer.rootFolder) {
+        rootUri = `file://${this.fileExplorer.rootFolder}`;
+        this.log('Using workspace root for LSP:', rootUri);
+      } else if (window.currentFilePath) {
+        const currentFileDir = window.currentFilePath.substring(0, window.currentFilePath.lastIndexOf('/'));
+        rootUri = `file://${currentFileDir}`;
+        this.log('No workspace open, using current file directory as root for LSP:', rootUri);
+      }
+
+      if (!rootUri) {
+        this.log('Cannot start language server: No workspace or file is open to determine a root directory.');
         return null;
       }
 
@@ -457,7 +512,6 @@ class DiagnosticsManager {
       this.log('Language server started with process ID:', processId);
 
       // Perform LSP handshake
-      const rootUri = `file://${this.fileExplorer.rootFolder}`;
       const requestId = Date.now();
       const initializeRequest = {
         jsonrpc: '2.0',
@@ -568,7 +622,7 @@ class DiagnosticsManager {
   
   async requestDiagnostics(processId, filePath, language, content) {
     this.log('Requesting diagnostics via LSP for:', filePath);
-    
+
     try {
       if (this.openDocuments.has(filePath)) {
         this.log('Document already open, sending change notification');
@@ -578,44 +632,26 @@ class DiagnosticsManager {
           params: {
             textDocument: {
               uri: `file://${filePath}`,
-              version: Date.now()
+              version: Date.now(), // Increment version
             },
-            contentChanges: [{ text: content }]
-          }
+            contentChanges: [{ text: content }],
+          },
         };
         await sendLspNotification(processId, JSON.stringify(changeNotification));
       } else {
         await this.sendDidOpenNotification(processId, filePath, language, content);
       }
       
-      const id = Date.now();
-      const symbolRequest = {
-        jsonrpc: '2.0',
-        id,
-        method: 'textDocument/documentSymbol',
-        params: {
-          textDocument: {
-            uri: `file://${filePath}`
-          }
-        }
-      };
-      
-      await sendLspRequest(processId, JSON.stringify(symbolRequest));
-      
-      // Wait for the response
-      for (let i = 0; i < 100; i++) {
-        if (this.lspResponses.has(id)) {
-          const response = this.lspResponses.get(id);
-          this.lspResponses.delete(id);
-          return response.result;
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      throw new Error('LSP request timeout');
+      // We don't need to explicitly request diagnostics.
+      // The server will `publishDiagnostics` automatically after `didOpen` or `didChange`.
+      // The result will be handled by the `handleLspMessage` listener.
+      this.log('Waiting for diagnostics to be published by the server...');
+
+      // Return an empty array immediately. The UI will be updated when the notification arrives.
+      return [];
       
     } catch (error) {
-      this.error('Failed to request LSP diagnostics:', error);
+      this.error('Failed to send open/change notification:', error);
       return [];
     }
   }

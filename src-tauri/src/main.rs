@@ -1087,30 +1087,67 @@ async fn start_language_server(
     args: Vec<String>,
     language: String,
     state: tauri::State<'_, LanguageServerMap>,
-    app_handle: tauri::AppHandle
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     let process_id = format!("{}_{}", language, Utc::now().timestamp_millis());
 
     let mut cmd = Command::new(&command);
     cmd.args(&args)
-       .stdin(Stdio::piped())
-       .stdout(Stdio::piped())
-       .stderr(Stdio::piped());
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped()); // Capture stderr as well
 
     match cmd.spawn() {
         Ok(mut child) => {
             let stdout = child.stdout.take().ok_or("Failed to take stdout")?;
+            let stderr = child.stderr.take().ok_or("Failed to take stderr")?;
 
             let listener_app_handle = app_handle.clone();
+            // Stderr listener
+            let stderr_app_handle = listener_app_handle.clone();
+            std::thread::spawn(move || {
+                let reader = std::io::BufReader::new(stderr);
+                for line in reader.lines() {
+                    if let Ok(line_content) = line {
+                        let _ = stderr_app_handle.emit("lsp_log_line", format!("[stderr] {}", line_content));
+                    }
+                }
+            });
+
+            // Stdout listener
             std::thread::spawn(move || {
                 let mut reader = std::io::BufReader::new(stdout);
-                let mut line = String::new();
-                while reader.read_line(&mut line).unwrap_or(0) > 0 {
-                    let trimmed_line = line.trim();
-                    if !trimmed_line.is_empty() {
-                        let _ = listener_app_handle.emit("lsp_log_line", trimmed_line);
+                loop {
+                    let mut headers = HashMap::new();
+                    loop {
+                        let mut buffer = String::new();
+                        if reader.read_line(&mut buffer).unwrap_or(0) == 0 {
+                            let _ = listener_app_handle.emit("lsp_log_line", "[stdout] LSP stdout stream ended.");
+                            return;
+                        }
+                        let buffer = buffer.trim();
+                        if buffer.is_empty() {
+                            break; // End of headers
+                        }
+                        if let Some((key, value)) = buffer.split_once(": ") {
+                            headers.insert(key.to_string(), value.to_string());
+                        }
                     }
-                    line.clear();
+
+                    if let Some(length_str) = headers.get("Content-Length") {
+                        if let Ok(length) = length_str.parse::<usize>() {
+                            let mut body_buffer = vec![0; length];
+                            if reader.read_exact(&mut body_buffer).is_ok() {
+                                if let Ok(json_body) = String::from_utf8(body_buffer) {
+                                    // Emit the structured JSON message
+                                    let _ = listener_app_handle.emit("lsp_message", json_body);
+                                }
+                            } else {
+                                let _ = listener_app_handle.emit("lsp_log_line", "[stdout] Failed to read message body.");
+                                return;
+                            }
+                        }
+                    }
                 }
             });
 
@@ -1118,123 +1155,24 @@ async fn start_language_server(
             processes.insert(process_id.clone(), child);
             Ok(process_id)
         },
-        Err(e) => Err(format!("Failed to start language server '{}': {}", command, e))
+        Err(e) => Err(format!("Failed to start language server '{}': {}", command, e)),
     }
 }
-
-
 
 #[tauri::command(rename_all = "snake_case")]
 async fn send_lsp_request(
     process_id: String,
     message: String,
-    state: tauri::State<'_, LanguageServerMap>
-) -> Result<String, String> {
+    state: tauri::State<'_, LanguageServerMap>,
+) -> Result<(), String> {
     let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
-    
+
     if let Some(process) = processes.get_mut(&process_id) {
         if let Some(stdin) = process.stdin.as_mut() {
             let request = format!("Content-Length: {}\r\n\r\n{}", message.len(), message);
             stdin.write_all(request.as_bytes()).map_err(|e| format!("Failed to write to process: {}", e))?;
             stdin.flush().map_err(|e| format!("Failed to flush stdin: {}", e))?;
-            
-            // Try to read response from stdout
-            if let Some(stdout) = process.stdout.as_mut() {
-                let mut all_data = Vec::new();
-                let mut attempts = 0;
-                const MAX_ATTEMPTS: usize = 10;
-                
-                // Read multiple times to capture all LSP messages
-                while attempts < MAX_ATTEMPTS {
-                    let mut buffer = vec![0; 4096];
-                    match stdout.read(&mut buffer) {
-                        Ok(bytes_read) if bytes_read > 0 => {
-                            all_data.extend_from_slice(&buffer[..bytes_read]);
-                            attempts += 1;
-                            
-                            // Small delay to allow more data to arrive
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                        },
-                        Ok(0) => {
-                            // No data available, but don't break immediately
-                            attempts += 1;
-                            std::thread::sleep(std::time::Duration::from_millis(50));
-                        },
-                        Ok(_) => {
-                            // This case should never happen since we covered bytes_read > 0 and == 0
-                            // But added for completeness to satisfy the compiler
-                            attempts += 1;
-                            std::thread::sleep(std::time::Duration::from_millis(50));
-                        },
-                        Err(_) => break,
-                    }
-                }
-                
-                if !all_data.is_empty() {
-                    let full_response = String::from_utf8_lossy(&all_data);
-                    
-                    // Parse multiple LSP messages - look for the actual response (not log messages)
-                    let mut best_response = None;
-                    let mut current_pos = 0;
-                    
-                    while let Some(content_length_pos) = full_response[current_pos..].find("Content-Length:") {
-                        let abs_pos = current_pos + content_length_pos;
-                        if let Some(header_end) = full_response[abs_pos..].find("\r\n\r\n") {
-                            let json_start = abs_pos + header_end + 4;
-                            if let Some(json_end) = full_response[json_start..].find("\r\n\r\n").or_else(|| {
-                                // Try to find next Content-Length or end of string
-                                full_response[json_start..].find("Content-Length:").or_else(|| {
-                                    Some(full_response.len() - json_start)
-                                })
-                            }) {
-                                let json_part = &full_response[json_start..json_start + json_end];
-                                
-                                // Try to parse as JSON to see if it's valid
-                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_part) {
-                                    // Prefer responses with "result" or "error" (actual responses)
-                                    // Skip "window/logMessage" and other notifications
-                                    if parsed.get("method").and_then(|m| m.as_str()) != Some("window/logMessage") {
-                                        if parsed.get("result").is_some() || parsed.get("error").is_some() {
-                                            best_response = Some(json_part.to_string());
-                                            break;
-                                        } else if best_response.is_none() {
-                                            // Keep any non-log message as fallback
-                                            best_response = Some(json_part.to_string());
-                                        }
-                                    }
-                                }
-                                current_pos = json_start + json_end;
-                            } else {
-                                break;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                    
-                    if let Some(response) = best_response {
-                        Ok(response)
-                    } else {
-                        // Fallback: return the first valid JSON we find
-                        if let Some(json_start) = full_response.find('{') {
-                            let remaining = &full_response[json_start..];
-                            if let Some(json_end) = remaining.find("\r\n\r\n").or_else(|| remaining.find("Content-Length:")) {
-                                Ok(remaining[..json_end].to_string())
-                            } else {
-                                Ok(remaining.to_string())
-                            }
-                        } else {
-                            Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
-                        }
-                    }
-                } else {
-                    // Return mock response with realistic structure
-                    Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
-                }
-            } else {
-                // Return mock response if no stdout
-                Ok(r#"{"jsonrpc": "2.0", "id": 1, "result": []}"#.to_string())
-            }
+            Ok(())
         } else {
             Err("Process stdin not available".to_string())
         }
