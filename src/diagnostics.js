@@ -8,6 +8,7 @@ class DiagnosticsManager {
   constructor() {
     this.diagnostics = new Map(); // filepath -> diagnostics array
     this.languageServers = new Map(); // file extension -> LSP info
+    this.openDocuments = new Set(); // Track which documents are open in LSP
     this.isRefreshing = false;
     this.autoRefreshTimeout = null; // For debouncing auto-refresh
     this.languageServerManager = new LanguageServerManager();
@@ -400,11 +401,8 @@ class DiagnosticsManager {
         return [];
       }
       
-      // Send textDocument/didOpen notification
-      await this.sendDidOpenNotification(processId, filePath, language, fileContent);
-      
-      // Request diagnostics
-      const diagnostics = await this.requestDiagnostics(processId, filePath);
+      // Request diagnostics (this will handle didClose/didOpen internally)
+      const diagnostics = await this.requestDiagnostics(processId, filePath, language, fileContent);
       
       this.log('LSP diagnostics received:', diagnostics);
       return diagnostics;
@@ -610,37 +608,105 @@ class DiagnosticsManager {
     
     try {
       await sendLspRequest(processId, JSON.stringify(notification));
+      this.openDocuments.add(filePath);
+      this.log('Document opened successfully:', filePath);
     } catch (error) {
       this.error('Failed to send didOpen notification:', error);
       throw error;
     }
   }
   
-  async requestDiagnostics(processId, filePath) {
-    // Request diagnostics via textDocument/publishDiagnostics
+  async sendDidCloseNotification(processId, filePath) {
+    // Only close if we think the document is open
+    if (!this.openDocuments.has(filePath)) {
+      this.log('Document not tracked as open, skipping didClose for:', filePath);
+      return;
+    }
+    
+    const notification = {
+      jsonrpc: '2.0',
+      method: 'textDocument/didClose',
+      params: {
+        textDocument: {
+          uri: `file://${filePath}`
+        }
+      }
+    };
+    
+    try {
+      await sendLspRequest(processId, JSON.stringify(notification));
+      this.openDocuments.delete(filePath);
+      this.log('Document closed successfully:', filePath);
+    } catch (error) {
+      this.log('Note: Failed to send didClose notification:', error);
+      // Still remove from tracking even if close failed
+      this.openDocuments.delete(filePath);
+    }
+  }
+  
+  async requestDiagnostics(processId, filePath, language, content) {
     this.log('Requesting diagnostics via LSP for:', filePath);
     
     try {
-      // Create LSP request for diagnostics
-      const diagnosticsRequest = {
+      // If document is already open, send a change notification instead
+      if (this.openDocuments.has(filePath)) {
+        this.log('Document already open, sending change notification');
+        
+        const changeNotification = {
+          jsonrpc: '2.0',
+          method: 'textDocument/didChange',
+          params: {
+            textDocument: {
+              uri: `file://${filePath}`,
+              version: Date.now() // Use timestamp as version for simplicity
+            },
+            contentChanges: [{
+              text: content // Full text replacement
+            }]
+          }
+        };
+        
+        await sendLspRequest(processId, JSON.stringify(changeNotification));
+      } else {
+        // Document not open, send didOpen
+        await this.sendDidOpenNotification(processId, filePath, language, content);
+      }
+      
+      // Request document symbols to trigger analysis
+      const symbolRequest = {
         jsonrpc: '2.0',
-        id: Date.now(), // Simple ID generation
-        method: 'textDocument/publishDiagnostics',
+        id: Date.now(),
+        method: 'textDocument/documentSymbol',
         params: {
-          uri: `file://${filePath}`,
-          diagnostics: [] // Request current diagnostics
+          textDocument: {
+            uri: `file://${filePath}`
+          }
         }
       };
       
-      // Send the request
-      const response = await sendLspRequest(processId, JSON.stringify(diagnosticsRequest));
-      this.log('LSP diagnostics response:', response);
+      const response = await sendLspRequest(processId, JSON.stringify(symbolRequest));
+      this.log('LSP document symbol response:', response);
       
       // Parse the response
       if (response) {
-        const parsed = JSON.parse(response);
-        if (parsed.result && Array.isArray(parsed.result)) {
-          return this.convertLspDiagnostics(parsed.result);
+        try {
+          const parsed = JSON.parse(response);
+          
+          // Check for LSP errors
+          if (parsed.error) {
+            this.error('LSP error:', parsed.error);
+            return [];
+          }
+          
+          // Document symbols don't contain diagnostics, but this triggers LSP analysis
+          if (parsed.result) {
+            this.log('LSP symbols received:', parsed.result);
+            // The actual diagnostics should come via publishDiagnostics notifications
+            // For now, return empty array and rely on fallback diagnostics
+            return [];
+          }
+        } catch (parseError) {
+          this.error('Failed to parse LSP response:', parseError);
         }
       }
       
