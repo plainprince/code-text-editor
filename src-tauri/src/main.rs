@@ -1122,31 +1122,48 @@ async fn start_language_server(
                     loop {
                         let mut buffer = String::new();
                         if reader.read_line(&mut buffer).unwrap_or(0) == 0 {
-                            let _ = listener_app_handle.emit("lsp_log_line", "[stdout] LSP stdout stream ended.");
+                            let _ = listener_app_handle.emit("lsp_log_line", "[stdout-parser] LSP stdout stream ended.");
                             return;
                         }
-                        let buffer = buffer.trim();
-                        if buffer.is_empty() {
+
+                        // Log raw header line
+                        let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-raw] {}", buffer.trim_end()));
+
+                        let header_line = buffer.trim();
+                        if header_line.is_empty() {
                             break; // End of headers
                         }
-                        if let Some((key, value)) = buffer.split_once(": ") {
+                        if let Some((key, value)) = header_line.split_once(": ") {
                             headers.insert(key.to_string(), value.to_string());
                         }
                     }
+                    
+                    let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-parser] Read headers: {:?}", headers));
 
                     if let Some(length_str) = headers.get("Content-Length") {
                         if let Ok(length) = length_str.parse::<usize>() {
+                            let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-parser] Content-Length is {}. Reading body...", length));
                             let mut body_buffer = vec![0; length];
                             if reader.read_exact(&mut body_buffer).is_ok() {
+                                let _ = listener_app_handle.emit("lsp_log_line", "[stdout-parser] Successfully read body.");
                                 if let Ok(json_body) = String::from_utf8(body_buffer) {
+                                    // Log raw body
+                                    let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-raw-body] {}", json_body));
                                     // Emit the structured JSON message
                                     let _ = listener_app_handle.emit("lsp_message", json_body);
+                                    let _ = listener_app_handle.emit("lsp_log_line", "[stdout-parser] Emitted lsp_message event.");
+                                } else {
+                                    let _ = listener_app_handle.emit("lsp_log_line", "[stdout-parser] Error: Failed to convert body to UTF-8 string.");
                                 }
                             } else {
-                                let _ = listener_app_handle.emit("lsp_log_line", "[stdout] Failed to read message body.");
+                                let _ = listener_app_handle.emit("lsp_log_line", "[stdout-parser] Error: Failed to read message body of specified length.");
                                 return;
                             }
+                        } else {
+                             let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-parser] Error: Failed to parse Content-Length '{}'", length_str));
                         }
+                    } else {
+                         let _ = listener_app_handle.emit("lsp_log_line", "[stdout-parser] Warning: No Content-Length header found.");
                     }
                 }
             });

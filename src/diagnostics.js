@@ -483,7 +483,6 @@ class DiagnosticsManager {
 
     try {
       // Determine the root URI for the language server.
-      // Priority: 1. Workspace folder. 2. Directory of the current file.
       let rootUri = null;
       if (this.fileExplorer && this.fileExplorer.rootFolder) {
         rootUri = `file://${this.fileExplorer.rootFolder}`;
@@ -511,7 +510,8 @@ class DiagnosticsManager {
 
       this.log('Language server started with process ID:', processId);
 
-      // Perform LSP handshake
+      // --- Begin LSP Handshake ---
+      this.log('Performing LSP handshake...');
       const requestId = Date.now();
       const initializeRequest = {
         jsonrpc: '2.0',
@@ -524,29 +524,56 @@ class DiagnosticsManager {
         }
       };
 
+      // Send the initialize request
       await sendLspRequest(processId, JSON.stringify(initializeRequest));
-      this.log('Sent initialize request to server');
+      this.log('Sent initialize request to server with ID:', requestId);
 
-      // For now, we'll optimistically assume initialization works and send the initialized notification
-      const initializedNotification = {
-        jsonrpc: '2.0',
-        method: 'initialized',
-        params: {}
-      };
-      await sendLspNotification(processId, JSON.stringify(initializedNotification));
-      this.log('Sent initialized notification to server');
+      // Wait for the server's response to the initialize request
+      this.log('Waiting for initialize response...');
+      const response = await this.waitForLspResponse(requestId);
       
-      const serverData = this.activeLanguageServers.get(language);
-      if (serverData) {
-        serverData.initialized = true;
-      }
+      if (response && !response.error) {
+        this.log('Received initialize response:', response.result.capabilities);
 
-      return processId;
+        // Now that the server has responded, send the initialized notification
+        const initializedNotification = {
+          jsonrpc: '2.0',
+          method: 'initialized',
+          params: {}
+        };
+        await sendLspNotification(processId, JSON.stringify(initializedNotification));
+        this.log('Sent initialized notification to server. Handshake complete.');
+
+        const serverData = this.activeLanguageServers.get(language);
+        if (serverData) {
+          serverData.initialized = true;
+        }
+        return processId;
+
+      } else {
+        this.error('Language server initialization failed:', response ? response.error : 'No response');
+        return null;
+      }
 
     } catch (error) {
       this.error('Failed to start or initialize language server:', error);
       return null;
     }
+  }
+  
+  // Helper to wait for a specific LSP response
+  async waitForLspResponse(id, timeout = 5000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      if (this.lspResponses.has(id)) {
+        const response = this.lspResponses.get(id);
+        this.lspResponses.delete(id);
+        return response;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50)); // Poll every 50ms
+    }
+    this.error(`Timeout waiting for LSP response for ID: ${id}`);
+    return null;
   }
   
   async readFileContent(filePath) {
