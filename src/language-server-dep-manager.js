@@ -48,34 +48,35 @@ class LanguageServerDependencyManager {
         return await fileExists(executablePath);
     }
 
-    async installServer(serverCommand, npmPackage) {
+    async installServer(serverCommand, npmPackages) {
         if (!this.initialized) {
             console.error(`[LSDepManager] Not initialized. Cannot install ${npmPackage}.`);
             return false;
         }
 
-        console.log(`[LSDepManager] Installing ${npmPackage}...`);
+        const packages = Array.isArray(npmPackages) ? npmPackages : [npmPackages];
+        console.log(`[LSDepManager] Installing ${packages.join(' ')}...`);
         this.installations.set(serverCommand, 'installing');
         try {
-            await runCommand('npm', ['install', npmPackage], this.serversDir);
-            console.log(`[LSDepManager] Successfully installed ${npmPackage}.`);
+            await runCommand('npm', ['install', ...packages], this.serversDir);
+            console.log(`[LSDepManager] Successfully installed ${packages.join(' ')}.`);
             this.installations.set(serverCommand, 'installed');
             return true;
         } catch (error) {
-            console.error(`[LSDepManager] Failed to install ${npmPackage}:`, error);
+            console.error(`[LSDepManager] Failed to install ${packages.join(' ')}:`, error);
             this.installations.set(serverCommand, 'failed');
             return false;
         }
     }
 
-    async ensureServerInstalled(serverCommand, npmPackage) {
+    async ensureServerInstalled(serverCommand, npmPackages) {
         const isInstalled = await this.isServerInstalled(serverCommand);
         if (isInstalled) {
             console.log(`[LSDepManager] ${serverCommand} is already installed.`);
             return true;
         }
 
-        return await this.installServer(serverCommand, npmPackage);
+        return await this.installServer(serverCommand, npmPackages);
     }
 }
 

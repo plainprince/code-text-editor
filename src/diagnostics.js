@@ -146,23 +146,23 @@ class DiagnosticsManager {
   setupLanguageServers() {
     this.languageServers.set('js', {
       name: 'ESLint',
-      command: 'vscode-eslint-server',
+      command: 'vscode-eslint-language-server',
       args: ['--stdio'],
-      npmPackage: 'vscode-eslint-server',
+      npmPackage: ['vscode-eslint-language-server', 'eslint'],
       type: 'npm',
       extensions: ['.js', '.jsx'],
-      installCommand: 'npm install -g vscode-eslint-server',
+      installCommand: 'npm install -g vscode-eslint-language-server eslint',
       description: 'ESLint language server for JavaScript/TypeScript'
     });
 
     this.languageServers.set('ts', {
         name: 'ESLint',
-        command: 'vscode-eslint-server',
+        command: 'vscode-eslint-language-server',
         args: ['--stdio'],
-        npmPackage: 'vscode-eslint-server',
+        npmPackage: ['vscode-eslint-language-server', 'eslint'],
         type: 'npm',
         extensions: ['.ts', '.tsx'],
-        installCommand: 'npm install -g vscode-eslint-server',
+        installCommand: 'npm install -g vscode-eslint-language-server eslint',
         description: 'ESLint language server for JavaScript/TypeScript'
     });
     
@@ -177,9 +177,9 @@ class DiagnosticsManager {
     });
 
     this.languageServers.set('rs', {
-      name: 'Rust Analyzer',
+      name: 'rust-analyzer',
       command: 'rust-analyzer',
-      args: [], // No --stdio needed, it's the default
+      args: [], // stdio by default
       type: 'global',
       extensions: ['.rs'],
       installCommand: 'rustup component add rust-analyzer',
@@ -252,10 +252,28 @@ class DiagnosticsManager {
       
       this.log('Server availability:', isAvailable);
       
-      if (!isAvailable) {
-        this.log('Language server not available, showing install instructions');
-        this.showInstallInstructionsForFile(serverInfo, ext);
-        return;
+    if (!isAvailable) {
+        this.log('Language server not available, attempting auto-install');
+        if (serverInfo.type === 'npm') {
+          try {
+            const installed = await lsDepManager.ensureServerInstalled(serverInfo.command, serverInfo.npmPackage);
+            if (installed) {
+              serverInfo.command = lsDepManager.getServerExecutablePath(serverInfo.command);
+              this.log('Auto-install successful, proceeding');
+            } else {
+              this.log('Auto-install failed, showing install instructions');
+              this.showInstallInstructionsForFile(serverInfo, ext, true);
+              return;
+            }
+          } catch (e) {
+            this.log('Auto-install exception, showing install instructions', e);
+            this.showInstallInstructionsForFile(serverInfo, ext, true);
+            return;
+          }
+        } else {
+          this.showInstallInstructionsForFile(serverInfo, ext, false);
+          return;
+        }
       }
 
       this.updateStatus('Collecting diagnostics...');
@@ -756,7 +774,7 @@ class DiagnosticsManager {
     return diagnostics ? diagnostics.length : 0;
   }
 
-  showInstallInstructionsForFile(serverInfo, ext) {
+  showInstallInstructionsForFile(serverInfo, ext, canAutoInstall = false) {
     this.updateStatus(`${serverInfo.name} not installed`);
     const content = document.getElementById('diagnostics-content');
     if (!content) return;
@@ -766,16 +784,9 @@ class DiagnosticsManager {
         <h3>Language Server Not Found</h3>
         <p>To get diagnostics for .${ext} files, install <strong>${serverInfo.name}</strong>:</p>
         <div class="install-commands">
-          <div class="install-option">
-            <strong>Using npm:</strong>
-            <code>${serverInfo.installCommand.npm}</code>
-          </div>
-          <div class="install-option">
-            <strong>Using yarn:</strong>
-            <code>${serverInfo.installCommand.yarn}</code>
-          </div>
+          <div class="install-option"><code>${serverInfo.installCommand || ''}</code></div>
         </div>
-        <p class="install-description">${serverInfo.installCommand.description}</p>
+        ${canAutoInstall ? '<button id="auto-install-ls" class="retry-button">Install automatically</button>' : ''}
         <div class="retry-section">
           <p class="retry-message">
             After installing the language server, click the button below to check again:
@@ -792,6 +803,25 @@ class DiagnosticsManager {
     if (retryBtn) {
       retryBtn.addEventListener('click', () => {
         this.forceRefresh();
+      });
+    }
+
+    const autoBtn = document.getElementById('auto-install-ls');
+    if (autoBtn) {
+      autoBtn.addEventListener('click', async () => {
+        this.updateStatus('Installing language server...');
+        try {
+          const ok = await lsDepManager.ensureServerInstalled(serverInfo.command, serverInfo.npmPackage);
+          if (ok) {
+            serverInfo.command = lsDepManager.getServerExecutablePath(serverInfo.command);
+            this.updateStatus('Installed. Rechecking...');
+            await this.forceRefresh();
+          } else {
+            this.updateStatus('Install failed');
+          }
+        } catch (e) {
+          this.updateStatus('Install failed');
+        }
       });
     }
   }
