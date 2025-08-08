@@ -1,14 +1,12 @@
 // diagnostics.js - Project diagnostics via LSP servers
 
-import { readFile } from './file-system.js';
-import { 
-  checkCommandExists, 
-  startLanguageServer, 
-  sendLspRequest, 
-  sendLspNotification,
-  listenToLspMessages
-} from './tauri-helpers.js';
-import lsDepManager from './language-server-dep-manager.js';
+  import { readFile } from './file-system.js';
+  import { 
+    checkCommandExists, 
+    listenToLspMessages
+  } from './tauri-helpers.js';
+  import lsDepManager from './language-server-dep-manager.js';
+  import LSPClient from './lsp-client.js';
 
 class DiagnosticsManager {
   constructor(fileExplorer) {
@@ -18,7 +16,7 @@ class DiagnosticsManager {
     this.openDocuments = new Set(); // Track which documents are open in LSP
     this.isRefreshing = false;
     this.autoRefreshTimeout = null; // For debouncing auto-refresh
-    this.activeLanguageServers = new Map(); // language -> process info
+         this.activeLanguageServers = new Map(); // language -> LSPClient instance
     this.debugMode = true; // Enable debug logging
     this.lspResponses = new Map(); // Store responses from LSP
 
@@ -72,25 +70,12 @@ class DiagnosticsManager {
         }
         
         const jsonString = message.substring(jsonStart);
-        const lspData = JSON.parse(jsonString);
-        this.log('Parsed LSP data:', lspData);
-
-        if (lspData.id && (lspData.result || lspData.error)) {
-          // This is a response to a request
-          this.lspResponses.set(lspData.id, lspData);
-          this.log(`Stored response for request ID: ${lspData.id}`);
-        } else if (lspData.method === 'textDocument/publishDiagnostics') {
-          // This is a diagnostics notification
-          const diagnostics = this.convertLspDiagnostics(lspData.params.diagnostics);
-          const filePath = lspData.params.uri.replace('file://', '');
-          this.diagnostics.set(filePath, diagnostics);
-          this.log(`Received diagnostics for ${filePath}:`, diagnostics.length, 'issues');
-          this.renderDiagnostics();
-          this.updateStatus(`Ready (${diagnostics.length} issues)`);
-        } else if (lspData.method === 'window/logMessage') {
-          this.log('[LSP Server Log]', `(${lspData.params.type})`, lspData.params.message);
-        } else {
-          this.log('Unhandled LSP method:', lspData.method);
+        
+        // Route message to all active LSP clients
+        for (const [language, client] of this.activeLanguageServers) {
+          if (client && client.handleMessage) {
+            client.handleMessage(jsonString);
+          }
         }
       }
     } catch (error) {
@@ -472,9 +457,10 @@ class DiagnosticsManager {
         if (!content) return [];
                  try {
            const cwd = filePath.substring(0, filePath.lastIndexOf('/')) || process.cwd();
+           // Set environment variable to use legacy config and basic rules
            const output = await window.tauri.core.invoke('run_command', { 
-             command: 'eslint', 
-             args: ['--no-config-lookup', '--no-eslintrc', '-f', 'json', filePath], 
+             command: 'env', 
+             args: ['ESLINT_USE_FLAT_CONFIG=false', 'eslint', '--no-eslintrc', '--env', 'es6', '--env', 'browser', '--env', 'node', '-f', 'json', filePath], 
              cwd 
            });
            const parsed = JSON.parse(output);
@@ -492,14 +478,14 @@ class DiagnosticsManager {
          }
       }
 
-      // LSP path (rust, etc.)
-      const processId = await this.ensureLanguageServerRunning(serverInfo, language);
-      if (!processId) return [];
-      const fileContent = await this.readFileContent(filePath);
-      if (!fileContent) return [];
-      const diagnostics = await this.requestDiagnostics(processId, filePath, language, fileContent);
-      this.log('LSP diagnostics received:', diagnostics);
-      return diagnostics;
+             // LSP path (rust, etc.)
+       const client = await this.ensureLanguageServerRunning(serverInfo, language);
+       if (!client) return [];
+       const fileContent = await this.readFileContent(filePath);
+       if (!fileContent) return [];
+       const diagnostics = await this.requestDiagnostics(client, filePath, language, fileContent);
+       this.log('LSP diagnostics received:', diagnostics);
+       return diagnostics;
       
     } catch (error) {
       this.error('Failed to get LSP diagnostics:', error);
@@ -509,31 +495,31 @@ class DiagnosticsManager {
   
 
   
-  async ensureLanguageServerRunning(serverInfo, language) {
-    const existing = this.activeLanguageServers.get(language);
-    if (existing && existing.initialized) {
-      this.log('Language server already running and initialized for:', language);
-      return existing.processId;
-    }
+     async ensureLanguageServerRunning(serverInfo, language) {
+     const existing = this.activeLanguageServers.get(language);
+     if (existing && existing.initialized) {
+       this.log('Language server already running and initialized for:', language);
+       return existing;
+     }
 
-    try {
-      // Determine the root URI for the language server.
-      let rootUri = null;
-      if (this.fileExplorer && this.fileExplorer.rootFolder) {
-        rootUri = `file://${this.fileExplorer.rootFolder}`;
-        this.log('Using workspace root for LSP:', rootUri);
-      } else if (window.currentFilePath) {
-        const currentFileDir = window.currentFilePath.substring(0, window.currentFilePath.lastIndexOf('/'));
-        rootUri = `file://${currentFileDir}`;
-        this.log('No workspace open, using current file directory as root for LSP:', rootUri);
-      }
+     try {
+       // Determine the root URI for the language server.
+       let rootUri = null;
+       if (this.fileExplorer && this.fileExplorer.rootFolder) {
+         rootUri = `file://${this.fileExplorer.rootFolder}`;
+         this.log('Using workspace root for LSP:', rootUri);
+       } else if (window.currentFilePath) {
+         const currentFileDir = window.currentFilePath.substring(0, window.currentFilePath.lastIndexOf('/'));
+         rootUri = `file://${currentFileDir}`;
+         this.log('No workspace open, using current file directory as root for LSP:', rootUri);
+       }
 
-      if (!rootUri) {
-        this.log('Cannot start language server: No workspace or file is open to determine a root directory.');
-        return null;
-      }
+       if (!rootUri) {
+         this.log('Cannot start language server: No workspace or file is open to determine a root directory.');
+         return null;
+       }
 
-             // Special handling for rust-analyzer - needs Cargo.toml in workspace
+       // Special handling for rust-analyzer - needs Cargo.toml in workspace
        if (serverInfo.command === 'rust-analyzer') {
          const cargoPath = rootUri.replace('file://', '') + '/Cargo.toml';
          try {
@@ -548,83 +534,36 @@ class DiagnosticsManager {
          }
        }
 
-       this.log('Starting language server:', serverInfo.command, serverInfo.args);
-       const processId = await startLanguageServer(serverInfo.command, serverInfo.args, language);
+       // Create and start LSP client
+       const client = new LSPClient(serverInfo, language);
+       
+       // Set up diagnostics handler
+       client.onNotification('textDocument/publishDiagnostics', (params) => {
+         const filePath = params.uri.replace('file://', '');
+         const diagnostics = this.convertLspDiagnostics(params.diagnostics);
+         this.diagnostics.set(filePath, diagnostics);
+         this.log(`Received diagnostics for ${filePath}:`, diagnostics.length, 'issues');
+         this.renderDiagnostics();
+         this.updateStatus(`Ready (${diagnostics.length} issues)`);
+       });
 
-      this.activeLanguageServers.set(language, {
-        processId,
-        serverInfo,
-        startTime: Date.now(),
-        initialized: false
-      });
+       const started = await client.start(rootUri);
+       if (started) {
+         this.activeLanguageServers.set(language, client);
+         this.log(`LSP client for ${language} started and initialized successfully`);
+         return client;
+       } else {
+         this.error(`Failed to start LSP client for ${language}`);
+         return null;
+       }
 
-      this.log('Language server started with process ID:', processId);
-
-      // --- Begin LSP Handshake ---
-      this.log('Performing LSP handshake...');
-      const requestId = Date.now();
-      const initializeRequest = {
-        jsonrpc: '2.0',
-        id: requestId,
-        method: 'initialize',
-        params: {
-          processId: null,
-          rootUri: rootUri,
-          capabilities: {}
-        }
-      };
-
-      // Send the initialize request
-      await sendLspRequest(processId, JSON.stringify(initializeRequest));
-      this.log('Sent initialize request to server with ID:', requestId);
-
-      // Wait for the server's response to the initialize request
-      this.log('Waiting for initialize response...');
-      const response = await this.waitForLspResponse(requestId);
-      
-      if (response && !response.error) {
-        this.log('Received initialize response:', response.result.capabilities);
-
-        // Now that the server has responded, send the initialized notification
-        const initializedNotification = {
-          jsonrpc: '2.0',
-          method: 'initialized',
-          params: {}
-        };
-        await sendLspNotification(processId, JSON.stringify(initializedNotification));
-        this.log('Sent initialized notification to server. Handshake complete.');
-
-        const serverData = this.activeLanguageServers.get(language);
-        if (serverData) {
-          serverData.initialized = true;
-        }
-        return processId;
-
-      } else {
-        this.error('Language server initialization failed:', response ? response.error : 'No response');
-        return null;
-      }
-
-    } catch (error) {
-      this.error('Failed to start or initialize language server:', error);
-      return null;
-    }
-  }
+     } catch (error) {
+       this.error('Failed to start or initialize language server:', error);
+       return null;
+     }
+   }
   
-  // Helper to wait for a specific LSP response
-  async waitForLspResponse(id, timeout = 5000) {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeout) {
-      if (this.lspResponses.has(id)) {
-        const response = this.lspResponses.get(id);
-        this.lspResponses.delete(id);
-        return response;
-      }
-      await new Promise(resolve => setTimeout(resolve, 50)); // Poll every 50ms
-    }
-    this.error(`Timeout waiting for LSP response for ID: ${id}`);
-    return null;
-  }
+
   
   async readFileContent(filePath) {
     this.log('Reading file content for:', filePath);
@@ -645,93 +584,35 @@ class DiagnosticsManager {
     }
   }
   
-  async sendDidOpenNotification(processId, filePath, language, content) {
-    const notification = {
-      jsonrpc: '2.0',
-      method: 'textDocument/didOpen',
-      params: {
-        textDocument: {
-          uri: `file://${filePath}`,
-          languageId: language,
-          version: 1,
-          text: content
-        }
-      }
-    };
-    
-    try {
-      await sendLspNotification(processId, JSON.stringify(notification));
-      this.openDocuments.add(filePath);
-      this.log('Document opened successfully:', filePath);
-    } catch (error) {
-      this.error('Failed to send didOpen notification:', error);
-      throw error;
-    }
-  }
   
-  async sendDidCloseNotification(processId, filePath) {
-    // Only close if we think the document is open
-    if (!this.openDocuments.has(filePath)) {
-      this.log('Document not tracked as open, skipping didClose for:', filePath);
-      return;
-    }
-    
-    const notification = {
-      jsonrpc: '2.0',
-      method: 'textDocument/didClose',
-      params: {
-        textDocument: {
-          uri: `file://${filePath}`
-        }
-      }
-    };
-    
-    try {
-      await sendLspNotification(processId, JSON.stringify(notification));
-      this.openDocuments.delete(filePath);
-      this.log('Document closed successfully:', filePath);
-    } catch (error) {
-      this.log('Note: Failed to send didClose notification:', error);
-      // Still remove from tracking even if close failed
-      this.openDocuments.delete(filePath);
-    }
-  }
   
-  async requestDiagnostics(processId, filePath, language, content) {
-    this.log('Requesting diagnostics via LSP for:', filePath);
+     async requestDiagnostics(client, filePath, language, content) {
+     this.log('Requesting diagnostics via LSP for:', filePath);
 
-    try {
-      if (this.openDocuments.has(filePath)) {
-        this.log('Document already open, sending change notification');
-        const changeNotification = {
-          jsonrpc: '2.0',
-          method: 'textDocument/didChange',
-          params: {
-            textDocument: {
-              uri: `file://${filePath}`,
-              version: Date.now(), // Increment version
-            },
-            contentChanges: [{ text: content }],
-          },
-        };
-        await sendLspNotification(processId, JSON.stringify(changeNotification));
-      } else {
-        await this.sendDidOpenNotification(processId, filePath, language, content);
-      }
-      
-      // We don't need to explicitly request diagnostics.
-      // The server will `publishDiagnostics` automatically after `didOpen` or `didChange`.
-      // The result will be handled by the `handleLspMessage` listener.
-      this.log('Waiting for diagnostics to be published by the server...');
+     try {
+       const uri = `file://${filePath}`;
+       
+       if (client.isDocumentOpen(uri)) {
+         this.log('Document already open, sending change notification');
+         await client.didChange(uri, Date.now(), [{ text: content }]);
+       } else {
+         this.log('Opening document in LSP client');
+         await client.didOpen(uri, language, 1, content);
+       }
+       
+       // We don't need to explicitly request diagnostics.
+       // The server will `publishDiagnostics` automatically after `didOpen` or `didChange`.
+       // The result will be handled by the client's notification handler.
+       this.log('Waiting for diagnostics to be published by the server...');
 
-      // Return an empty array immediately. The UI will be updated when the notification arrives.
-      return [];
-      
-    } catch (error) {
-      this.error('Failed to send open/change notification:', error);
-      return [];
-    }
-  }
+       // Return an empty array immediately. The UI will be updated when the notification arrives.
+       return [];
+       
+     } catch (error) {
+       this.error('Failed to send open/change notification:', error);
+       return [];
+     }
+   }
   
   convertLspDiagnostics(lspDiagnostics) {
     return lspDiagnostics.map(diag => ({
