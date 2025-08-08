@@ -1,24 +1,22 @@
 use tree_sitter::{Language, Parser, Node, Tree};
 use serde::{Deserialize, Serialize};
 
-extern "C" {
-    fn tree_sitter_javascript() -> Language;
-    fn tree_sitter_typescript() -> Language;
-    fn tree_sitter_python() -> Language;
-    fn tree_sitter_rust() -> Language;
-    fn tree_sitter_go() -> Language;
-}
+// Use LANGUAGE constants from crates
+use tree_sitter_javascript::LANGUAGE as JAVASCRIPT;
+use tree_sitter_typescript::{LANGUAGE_TYPESCRIPT, LANGUAGE_TSX};
+use tree_sitter_python::LANGUAGE as PYTHON;
+use tree_sitter_rust::LANGUAGE as RUST;
+use tree_sitter_go::LANGUAGE as GO;
 
 pub fn get_language(language_id: &str) -> Result<Language, String> {
-    unsafe {
-        match language_id {
-            "javascript" | "js" => Ok(tree_sitter_javascript()),
-            "typescript" | "ts" => Ok(tree_sitter_typescript()),
-            "python" | "py" => Ok(tree_sitter_python()),
-            "rust" | "rs" => Ok(tree_sitter_rust()),
-            "go" => Ok(tree_sitter_go()),
-            _ => Err(format!("Unsupported language: {}", language_id)),
-        }
+    match language_id {
+        "javascript" | "js" => Ok(JAVASCRIPT.into()),
+        "typescript" | "ts" => Ok(LANGUAGE_TYPESCRIPT.into()),
+        "tsx" | "typescriptreact" => Ok(LANGUAGE_TSX.into()),
+        "python" | "py" => Ok(PYTHON.into()),
+        "rust" | "rs" => Ok(RUST.into()),
+        "go" => Ok(GO.into()),
+        _ => Err(format!("Unsupported language: {}", language_id)),
     }
 }
 
