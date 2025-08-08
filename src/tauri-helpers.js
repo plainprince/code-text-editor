@@ -127,7 +127,15 @@ export async function listenToLspMessages(handler) {
   }
 }
 
-
+export async function listenToLspDiagnostics(handler) {
+  try {
+    const tauri = ensureTauri();
+    await tauri.event.listen('lsp_diagnostics', (event) => handler(event.payload));
+  } catch (error) {
+    console.error('Failed to listen to LSP diagnostics:', error);
+    throw error;
+  }
+}
 
 /**
  * Write a text file

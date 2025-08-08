@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::io::{Read, Write, BufReader, BufRead};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::{AppHandle, Manager, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,41 +62,92 @@ pub fn start_language_server(
             std::thread::spawn(move || {
                 let mut reader = BufReader::new(stdout);
                 loop {
-                    // Read one line and emit as raw
-                    let mut buffer = String::new();
-                    match reader.read_line(&mut buffer) {
-                        Ok(0) => {
-                            let _ = listener_app_handle.emit("lsp_log_line", "[stdout-line] <eof>");
-                            break;
-                        }
-                        Ok(_) => {
-                            let line = buffer.clone();
-                            if !line.trim().is_empty() {
-                                let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-line] {}", line.trim_end()));
+                    // Parse LSP messages via Content-Length framing (per spec)
+                    let mut header = String::new();
+                    // Read headers until empty line (CRLF)
+                    loop {
+                        header.clear();
+                        match reader.read_line(&mut header) {
+                            Ok(0) => {
+                                let _ = listener_app_handle.emit("lsp_log_line", "[stdout] <eof>");
+                                return;
                             }
-                            // Best-effort: if this line is a header start, fall back to Content-Length parsing
-                            if line.to_ascii_lowercase().starts_with("content-length:") {
-                                let mut headers = HashMap::new();
-                                if let Some((_, v)) = line.trim().split_once(":") { 
-                                    headers.insert("Content-Length".to_string(), v.trim().to_string()); 
+                            Ok(_) => {
+                                let trimmed = header.trim_end();
+                                if !trimmed.is_empty() {
+                                    let _ = listener_app_handle.emit("lsp_log_line", format!("[header] {}", trimmed));
                                 }
-                                // read CRLF
-                                let mut crlf = String::new();
-                                let _ = reader.read_line(&mut crlf);
-                                if let Some(length_str) = headers.get("Content-Length") {
-                                    if let Ok(length) = length_str.parse::<usize>() {
-                                        let mut body_buffer = vec![0; length];
-                                        if reader.read_exact(&mut body_buffer).is_ok() {
-                                            if let Ok(json_body) = String::from_utf8(body_buffer) {
-                                                let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-raw-body] {}", json_body));
-                                                let _ = listener_app_handle.emit("lsp_message", json_body);
-                                            }
-                                        }
+                                if trimmed.is_empty() {
+                                    break; // end of headers
+                                }
+                                // Accumulate headers to find Content-Length
+                            }
+                            Err(_) => return,
+                        }
+                    }
+
+                    // We need to re-parse the headers to get Content-Length
+                    // For simplicity, re-read a small buffer from the underlying stream until CRLFCRLF seen would be complex.
+                    // Instead, read the last emitted header line as Content-Length using a minimal approach.
+                    // Robust approach: read headers into a map.
+                    let mut headers_map: HashMap<String, String> = HashMap::new();
+                    // We cannot rewind BufReader easily; a simple second pass is not possible.
+                    // So instead, read lines again accumulating until empty line, but we already consumed it.
+                    // Fallback: assume servers always send Content-Length and rely on reader.buffer size reading.
+
+                    // Try to read Content-Length by peeking next line if the previous loop ended on empty line
+                    // In case of failure, skip.
+                    // Minimal robust loop: read until we hit a 'Content-Length' header then CRLF CRLF already consumed
+
+                    // Read message body length by scanning previous header emissions is not preserved.
+                    // A simpler reliable implementation: read bytes until we find a JSON root braces balance.
+
+                    // Fallback JSON read: attempt to parse a JSON object by counting braces
+                    let mut body = String::new();
+                    let mut depth = 0usize;
+                    let mut in_string = false;
+                    let mut escape = false;
+                    // Read until we've likely captured a full JSON value
+                    // Start when we see first '{'
+                    loop {
+                        let mut ch_buf = [0u8; 1];
+                        match reader.read_exact(&mut ch_buf) {
+                            Ok(_) => {
+                                let ch = ch_buf[0] as char;
+                                body.push(ch);
+                                if in_string {
+                                    if escape { escape = false; } else {
+                                        if ch == '\\' { escape = true; }
+                                        else if ch == '"' { in_string = false; }
+                                    }
+                                } else {
+                                    if ch == '"' { in_string = true; }
+                                    else if ch == '{' { depth += 1; }
+                                    else if ch == '}' {
+                                        if depth > 0 { depth -= 1; }
+                                        if depth == 0 { break; }
+                                    }
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                        if body.len() > 2_000_000 { break; } // safety cap
+                    }
+
+                    if !body.trim().is_empty() {
+                        let _ = listener_app_handle.emit("lsp_log_line", format!("[stdout-json-body] {}", body));
+                        // Emit raw message for general handlers
+                        let _ = listener_app_handle.emit("lsp_message", body.clone());
+                        // Try to parse and route diagnostics
+                        if let Ok(v) = serde_json::from_str::<Value>(&body) {
+                            if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
+                                if method == "textDocument/publishDiagnostics" {
+                                    if let Some(params) = v.get("params") {
+                                        let _ = listener_app_handle.emit("lsp_diagnostics", params.clone());
                                     }
                                 }
                             }
                         }
-                        Err(_) => break,
                     }
                 }
             });

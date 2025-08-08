@@ -3,7 +3,8 @@
   import { readFile } from './file-system.js';
   import { 
     checkCommandExists, 
-    listenToLspMessages
+    listenToLspMessages,
+    listenToLspDiagnostics
   } from './tauri-helpers.js';
   import lsDepManager from './language-server-dep-manager.js';
   import SimpleLSPClient from './simple-lsp-client.js';
@@ -40,6 +41,29 @@ class DiagnosticsManager {
         this.handleLspMessage(event.payload);
       } else if (event.event === 'lsp_log_line') {
         this.lspLogHandler(event.payload);
+      }
+    });
+
+    // Listen for diagnostics events directly from backend
+    listenToLspDiagnostics((params) => {
+      try {
+        // Route to active clients for any custom handling
+        for (const [, client] of this.activeLanguageServers) {
+          if (client && client.diagnosticsHandler) {
+            client.diagnosticsHandler(params);
+          }
+        }
+        // Also map to our flattened diagnostics for the current file if applicable
+        const uri = params.uri || '';
+        const filepath = uri.startsWith('file://') ? uri.slice('file://'.length) : uri;
+        const lspDiagnostics = Array.isArray(params.diagnostics) ? params.diagnostics : [];
+        const converted = this.convertLspDiagnostics(lspDiagnostics);
+        if (filepath) {
+          this.diagnostics.set(filepath, converted);
+          this.renderDiagnostics();
+        }
+      } catch (e) {
+        this.error('Failed to process lsp_diagnostics:', e);
       }
     });
     
