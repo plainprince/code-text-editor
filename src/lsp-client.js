@@ -208,13 +208,18 @@ export class LSPClient {
   handleMessage(message) {
     try {
       const data = JSON.parse(message);
+      console.log(`[LSPClient] ${this.serverInfo.name} received:`, data);
       
       if (data.id && (data.result !== undefined || data.error)) {
         // This is a response to a request
+        console.log(`[LSPClient] ${this.serverInfo.name} handling response for ID:`, data.id);
         const handler = this.responseHandlers.get(data.id);
         if (handler) {
           this.responseHandlers.delete(data.id);
+          console.log(`[LSPClient] ${this.serverInfo.name} found handler for ID:`, data.id);
           handler(data);
+        } else {
+          console.log(`[LSPClient] ${this.serverInfo.name} no handler found for ID:`, data.id);
         }
       } else if (data.method) {
         // This is a notification

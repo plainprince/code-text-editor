@@ -6,7 +6,7 @@
     listenToLspMessages
   } from './tauri-helpers.js';
   import lsDepManager from './language-server-dep-manager.js';
-  import LSPClient from './lsp-client.js';
+  import SimpleLSPClient from './simple-lsp-client.js';
 
 class DiagnosticsManager {
   constructor(fileExplorer) {
@@ -457,10 +457,23 @@ class DiagnosticsManager {
         if (!content) return [];
                  try {
            const cwd = filePath.substring(0, filePath.lastIndexOf('/')) || process.cwd();
-           // Set environment variable to use legacy config and basic rules
+           // Use ESLint with basic rules and suppress warnings
            const output = await window.tauri.core.invoke('run_command', { 
              command: 'env', 
-             args: ['ESLINT_USE_FLAT_CONFIG=false', 'eslint', '--no-eslintrc', '--env', 'es6', '--env', 'browser', '--env', 'node', '-f', 'json', filePath], 
+             args: [
+               'ESLINT_USE_FLAT_CONFIG=false', 
+               'eslint', 
+               '--no-eslintrc', 
+               '--env', 'es6', 
+               '--env', 'browser', 
+               '--env', 'node',
+               '--rule', 'no-unused-vars:error',
+               '--rule', 'no-undef:error', 
+               '--rule', 'no-console:warn',
+               '--quiet', // Suppress warnings, only show errors
+               '-f', 'json', 
+               filePath
+             ], 
              cwd 
            });
            const parsed = JSON.parse(output);
@@ -534,19 +547,9 @@ class DiagnosticsManager {
          }
        }
 
-       // Create and start LSP client
-       const client = new LSPClient(serverInfo, language);
+       // Create and start simple LSP client
+       const client = new SimpleLSPClient(serverInfo, language);
        
-       // Set up diagnostics handler
-       client.onNotification('textDocument/publishDiagnostics', (params) => {
-         const filePath = params.uri.replace('file://', '');
-         const diagnostics = this.convertLspDiagnostics(params.diagnostics);
-         this.diagnostics.set(filePath, diagnostics);
-         this.log(`Received diagnostics for ${filePath}:`, diagnostics.length, 'issues');
-         this.renderDiagnostics();
-         this.updateStatus(`Ready (${diagnostics.length} issues)`);
-       });
-
        const started = await client.start(rootUri);
        if (started) {
          this.activeLanguageServers.set(language, client);
@@ -590,26 +593,15 @@ class DiagnosticsManager {
      this.log('Requesting diagnostics via LSP for:', filePath);
 
      try {
-       const uri = `file://${filePath}`;
+       // Use the simple client's direct diagnostics method
+       const rawDiagnostics = await client.getDiagnostics(filePath, language, content);
+       const diagnostics = this.convertLspDiagnostics(rawDiagnostics);
        
-       if (client.isDocumentOpen(uri)) {
-         this.log('Document already open, sending change notification');
-         await client.didChange(uri, Date.now(), [{ text: content }]);
-       } else {
-         this.log('Opening document in LSP client');
-         await client.didOpen(uri, language, 1, content);
-       }
-       
-       // We don't need to explicitly request diagnostics.
-       // The server will `publishDiagnostics` automatically after `didOpen` or `didChange`.
-       // The result will be handled by the client's notification handler.
-       this.log('Waiting for diagnostics to be published by the server...');
-
-       // Return an empty array immediately. The UI will be updated when the notification arrives.
-       return [];
+       this.log(`Received ${diagnostics.length} diagnostics for ${filePath}`);
+       return diagnostics;
        
      } catch (error) {
-       this.error('Failed to send open/change notification:', error);
+       this.error('Failed to get diagnostics from LSP:', error);
        return [];
      }
    }
