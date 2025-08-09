@@ -84,31 +84,7 @@
             <div class="terminal-content" id="terminal-content"></div>
           </div>
           
-          <!-- Diagnostics panel (bottom) -->
-          <div id="diagnostics" class="bottom-panel" style="display: none;">
-            <div class="diagnostics-header">
-              <div class="diagnostics-controls">
-                <span class="diagnostics-status" id="diagnostics-status">Ready</span>
-                <button id="diagnostics-refresh-btn" class="diagnostics-refresh-btn" title="Force refresh language server detection">
-                  ↻
-                </button>
-                <button id="diagnostics-debug-btn" class="diagnostics-debug-btn" title="Toggle debug mode">
-                  🐛
-                </button>
-                <button id="diagnostics-test-btn" class="diagnostics-test-btn" title="Test with sample diagnostics">
-                  Test
-                </button>
-                <button id="diagnostics-open-test-file-btn" class="diagnostics-test-btn" title="Open test file">
-                  Open Test File
-                </button>
-              </div>
-            </div>
-            <div class="diagnostics-content" id="diagnostics-content">
-              <div class="diagnostics-empty">
-                <p>No diagnostics available. Open a project and supported language servers will be detected automatically.</p>
-              </div>
-            </div>
-          </div>
+
         </div>
         
         <div id="sidebar-right" style="display: none;">
@@ -130,7 +106,6 @@
         </div>
         <div class="statusbar-right">
           <button id="terminal-statusbar-button" class="statusbar-button">Terminal</button>
-          <button id="diagnostics-statusbar-button" class="statusbar-button">Diagnostics</button>
           <button id="ai-panel-statusbar-button" class="statusbar-button">AI</button>
         </div>
       </div>
@@ -161,25 +136,85 @@
           renderWhitespace: "selection"
         },
         themes: {
+          dark: {
+            name: "Dark Theme",
+            base: "dark",
+            background: "#1e1e1e",
+            foreground: "#d4d4d4",
+            caret: "#ffffff",
+            selection: "#264f78",
+            selectionMatch: "#094771",
+            lineHighlight: "#2a2d2e",
+            gutterBackground: "#1e1e1e",
+            gutterForeground: "#858585",
+            syntax: {
+              keyword: "#569cd6",
+              string: "#ce9178",
+              comment: "#6a9955",
+              number: "#b5cea8",
+              operator: "#d4d4d4",
+              punctuation: "#d4d4d4",
+              variable: "#9cdcfe",
+              function: "#dcdcaa",
+              type: "#4ec9b0",
+              tag: "#569cd6",
+              attribute: "#92c5f8",
+              property: "#9cdcfe",
+              constant: "#4fc1ff",
+              error: "#f44747"
+            },
+            customKeywords: {
+              jsKeywords: ["const", "let", "var", "function", "class", "extends", "implements", "interface", "type", "enum"],
+              jsBuiltins: ["console", "window", "document", "localStorage", "sessionStorage", "fetch", "Promise"],
+              pythonKeywords: ["def", "class", "import", "from", "as", "with", "lambda", "yield", "async", "await"],
+              pythonBuiltins: ["print", "len", "range", "enumerate", "zip", "map", "filter", "reduce"],
+              rustKeywords: ["fn", "struct", "enum", "impl", "trait", "mod", "use", "pub", "mut", "let"],
+              rustBuiltins: ["Vec", "HashMap", "Option", "Result", "String", "str"],
+              goKeywords: ["func", "struct", "interface", "type", "var", "const", "package", "import"],
+              goBuiltins: ["fmt", "log", "http", "json", "time", "context"],
+              controlFlow: ["if", "else", "elif", "for", "while", "switch", "case", "break", "continue", "return"],
+              types: ["int", "float", "string", "bool", "array", "object", "null", "undefined"]
+            }
+          },
           light: {
+            name: "Light Theme",
+            base: "light",
             background: "#ffffff",
             foreground: "#000000",
-            sidebar: "#f5f5f5", 
-            border: "#ddd",
-            hover: "#e8e8e8",
-            selected: "#007acc",
-            accent: "#007acc",
-            secondary: "#6c757d"
-          },
-          dark: {
-            background: "#1e1e1e",
-            foreground: "#ffffff", 
-            sidebar: "#252526",
-            border: "#3c3c3c",
-            hover: "#2a2d2e",
-            selected: "#007acc",
-            accent: "#007acc",
-            secondary: "#6c757d"
+            caret: "#000000",
+            selection: "#add6ff",
+            selectionMatch: "#a8dadc",
+            lineHighlight: "#f0f0f0",
+            gutterBackground: "#ffffff",
+            gutterForeground: "#237893",
+            syntax: {
+              keyword: "#0000ff",
+              string: "#a31515",
+              comment: "#008000",
+              number: "#098658",
+              operator: "#000000",
+              punctuation: "#000000",
+              variable: "#001080",
+              function: "#795e26",
+              type: "#267f99",
+              tag: "#800000",
+              attribute: "#ff0000",
+              property: "#001080",
+              constant: "#0070c1",
+              error: "#cd3131"
+            },
+            customKeywords: {
+              jsKeywords: ["const", "let", "var", "function", "class", "extends", "implements", "interface", "type", "enum"],
+              jsBuiltins: ["console", "window", "document", "localStorage", "sessionStorage", "fetch", "Promise"],
+              pythonKeywords: ["def", "class", "import", "from", "as", "with", "lambda", "yield", "async", "await"],
+              pythonBuiltins: ["print", "len", "range", "enumerate", "zip", "map", "filter", "reduce"],
+              rustKeywords: ["fn", "struct", "enum", "impl", "trait", "mod", "use", "pub", "mut", "let"],
+              rustBuiltins: ["Vec", "HashMap", "Option", "Result", "String", "str"],
+              goKeywords: ["func", "struct", "interface", "type", "var", "const", "package", "import"],
+              goBuiltins: ["fmt", "log", "http", "json", "time", "context"],
+              controlFlow: ["if", "else", "elif", "for", "while", "switch", "case", "break", "continue", "return"],
+              types: ["int", "float", "string", "bool", "array", "object", "null", "undefined"]
+            }
           }
         },
         icons: {

@@ -136,7 +136,7 @@ export async function writeTextFile(filePath, content) {
   try {
     const tauri = ensureTauri();
     return await tauri.core.invoke('write_text_file', {
-      filePath,
+      file_path: filePath,
       content
     });
   } catch (error) {

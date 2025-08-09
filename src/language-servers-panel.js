@@ -1,7 +1,7 @@
 // Language Servers Panel - Manage TCP connections to language servers
 // Works like a todo app but for language server ports
 
-import * as monaco from 'monaco-editor';
+// Language servers panel now works with CodeMirror instead of Monaco
 
 class LanguageServersPanel {
   constructor() {

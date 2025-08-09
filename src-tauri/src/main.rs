@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use tree_sitter::{Language, Parser, Node, Tree};
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn get_app_support_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
     match app_handle.path().app_data_dir() {
         Ok(dir) => Ok(dir.to_string_lossy().to_string()),
@@ -23,7 +23,7 @@ fn get_app_support_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn run_command(command: String, args: Vec<String>, cwd: String) -> Result<String, String> {
     let output = Command::new(command)
         .args(args)
@@ -172,12 +172,12 @@ fn file_exists(file_path: String) -> bool {
     Path::new(&file_path).exists()
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn is_directory(path: String) -> bool {
     Path::new(&path).is_dir()
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn get_settings_file_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     match app_handle.path().app_config_dir() {
         Ok(config_dir) => {
@@ -464,7 +464,7 @@ fn clipboard_paste(target_dir: String, clipboard_state: tauri::State<ClipboardSt
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn clipboard_get_status(clipboard_state: tauri::State<ClipboardState>) -> Result<Option<(String, bool)>, String> {
     let clipboard = clipboard_state.lock().map_err(|e| format!("Failed to lock clipboard: {}", e))?;
     match &*clipboard {
@@ -473,7 +473,7 @@ fn clipboard_get_status(clipboard_state: tauri::State<ClipboardState>) -> Result
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn clipboard_clear(clipboard_state: tauri::State<ClipboardState>) -> Result<String, String> {
     let mut clipboard = clipboard_state.lock().map_err(|e| format!("Failed to lock clipboard: {}", e))?;
     *clipboard = None;
@@ -526,7 +526,7 @@ struct ClipboardItem {
 
 type ClipboardState = Arc<Mutex<Option<ClipboardItem>>>;
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn create_terminal_session(
     session_id: String,
     working_directory: Option<String>,
@@ -605,7 +605,7 @@ async fn create_terminal_session(
     Ok(session_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn write_to_terminal(
     session_id: String,
     data: String,
@@ -627,7 +627,7 @@ async fn write_to_terminal(
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn close_terminal_session(
     session_id: String,
     sessions: tauri::State<'_, TerminalSessions>,
@@ -637,7 +637,7 @@ async fn close_terminal_session(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn resize_terminal(
     session_id: String,
     rows: u16,
@@ -679,7 +679,7 @@ struct SearchResult {
     matches: Vec<SearchMatch>,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn search_in_files(
     workspace_path: String,
     query: String,
@@ -842,7 +842,7 @@ fn search_in_content(content: &str, regex: &regex::Regex) -> Vec<SearchMatch> {
 }
 
 // Command existence check
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn check_command_exists(command: String) -> Result<bool, String> {
     // Cross-platform command existence check
     let cmd = if cfg!(target_os = "windows") {
@@ -866,7 +866,7 @@ fn check_command_exists(command: String) -> Result<bool, String> {
 }
 
 // Tree-sitter Commands
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn parse_document_symbols(
     source_code: String,
     language_id: String,

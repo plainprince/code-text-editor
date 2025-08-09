@@ -2,18 +2,32 @@
 
 // Import modules
 import FileExplorer from './file-explorer.js';
-import Editor from './editor.js';
+import CodeMirrorEditor from './codemirror-editor.js';
 import { TerminalManager } from './terminal.js';
-import DiagnosticsManager from './diagnostics.js';
+
 import DraggablePanes from './draggable-panes.js';
-import { getWorkspaceFiles, searchInFiles } from './file-system.js';
+import { getWorkspaceFiles, searchInFiles, fileExists, writeFile as fsWriteFile, readFile as fsReadFile } from './file-system.js';
 import { writeTextFile, shutdownAllLanguageServers } from './tauri-helpers.js';
 import OutlinePanel from './outline.js';
-
-import * as monaco from 'monaco-editor';
+import { createDefaultThemeSettings } from './theme-system.js';
 
 window.addEventListener('beforeunload', () => {
   shutdownAllLanguageServers();
+});
+
+// Autosave on window blur/focus loss
+window.addEventListener('blur', async () => {
+  if (currentFilePath && currentFilePath !== 'settings' && editorInstance && editorInstance.content) {
+    try {
+      await window.__TAURI__.core.invoke("write_text_file", {
+        file_path: currentFilePath,
+        content: editorInstance.content
+      });
+      console.log(`Auto-saved on blur: ${currentFilePath}`);
+    } catch (saveError) {
+      console.warn(`Auto-save on blur failed for ${currentFilePath}:`, saveError);
+    }
+  }
 });
 
 
@@ -28,8 +42,34 @@ let editorInstance = null;
 let outlinePanel = null;
 
 let terminalInstance = null;
-let diagnosticsManager = null;
 let draggablePanes = null;
+
+// Utility function for deep merging settings objects
+function deepMerge(target, source) {
+  const output = { ...target };
+
+  if (isObject(target) && isObject(source)) {
+    Object.keys(source).forEach(key => {
+      if (isObject(source[key])) {
+        if (!(key in target)) {
+          Object.assign(output, { [key]: source[key] });
+        } else {
+          output[key] = deepMerge(target[key], source[key]);
+        }
+      } else {
+        Object.assign(output, { [key]: source[key] });
+      }
+    });
+  }
+
+  return output;
+}
+
+function isObject(item) {
+  return (item && typeof item === 'object' && !Array.isArray(item));
+}
+
+// Global state for workspace files
 let workspaceFiles = [];
 let settingsWatcher = null;
 
@@ -67,9 +107,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   
   // Then restore last workspace (needs fileExplorer)
   restoreLastWorkspace();
-  
-  // Initialize diagnostics
-  await initDiagnostics();
   
   // Initialize terminal
   await initTerminal();
@@ -187,12 +224,10 @@ function setRightPanel(panel) {
 
 function setBottomPanel(panel) {
   const terminalBtn = document.getElementById("terminal-statusbar-button");
-  const diagnosticsBtn = document.getElementById("diagnostics-statusbar-button");
   const bottomContainer = document.getElementById("bottom-panels-container");
 
   const panelMap = {
-    "terminal": terminalBtn,
-    "diagnostics": diagnosticsBtn
+    "terminal": terminalBtn
   };
 
   // Remove highlight from all buttons
@@ -202,9 +237,7 @@ function setBottomPanel(panel) {
 
   // Hide all bottom panels
   const terminalPanel = document.getElementById("terminal");
-  const diagnosticsPanel = document.getElementById("diagnostics");
   if (terminalPanel) terminalPanel.style.display = 'none';
-  if (diagnosticsPanel) diagnosticsPanel.style.display = 'none';
 
   if (currentBottomPanel === panel) {
     // If the same panel is clicked, toggle it off
@@ -277,7 +310,6 @@ function setupPanelButtons() {
   document.getElementById("search-project-button").addEventListener("click", () => openSearch());
   document.getElementById("ai-panel-statusbar-button").addEventListener("click", () => setRightPanel("ai-panel"));
   document.getElementById("terminal-statusbar-button").addEventListener("click", () => setBottomPanel("terminal"));
-  document.getElementById("diagnostics-statusbar-button").addEventListener("click", () => setBottomPanel("diagnostics"));
 }
 
 function setupEditorButtons() {
@@ -335,15 +367,19 @@ function setupWindowControls() {
 
 function setupCommandPalette() {
   document.addEventListener('keydown', (e) => {
-    // Ctrl/Cmd + P to open file palette
-    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+    // Ctrl/Cmd + Shift + P to open command palette (check this first)
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
       e.preventDefault();
-      openFilePalette();
-    }
-    // Ctrl/Cmd + Shift + P to open command palette
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
-      e.preventDefault();
+      console.log('Opening command palette');
       openCommandPalette();
+      return;
+    }
+    // Ctrl/Cmd + P to open file palette (only if shift is NOT pressed)
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+      e.preventDefault();
+      console.log('Opening file palette');
+      openFilePalette();
+      return;
     }
   });
   
@@ -395,7 +431,7 @@ function updateEditor(filePath, content, fileName) {
     }
     
     // Create editor instance
-    editorInstance = new Editor(editorContainer);
+    editorInstance = new CodeMirrorEditor(editorContainer);
   }
   
   // Set content first
@@ -412,7 +448,7 @@ function updateEditor(filePath, content, fileName) {
   
   // Update outline panel with current editor
   if (outlinePanel && editorInstance) {
-    outlinePanel.setEditor(editorInstance.editor);
+    outlinePanel.setEditor(editorInstance);
   }
 }
 
@@ -463,6 +499,19 @@ function updateTabs() {
 // Switch to a tab (load file fresh)
 async function switchToTab(filePath) {
   try {
+    // Autosave current file before switching (if we have an open file and editor content)
+    if (currentFilePath && currentFilePath !== 'settings' && editorInstance && editorInstance.content) {
+      try {
+        await window.__TAURI__.core.invoke("write_text_file", {
+          file_path: currentFilePath,
+          content: editorInstance.content
+        });
+        console.log(`Auto-saved: ${currentFilePath}`);
+      } catch (saveError) {
+        console.warn(`Auto-save failed for ${currentFilePath}:`, saveError);
+      }
+    }
+    
     // Handle special case for settings
     if (filePath === 'settings') {
       await openSettings();
@@ -608,24 +657,20 @@ async function loadSettings() {
     const filePath = await getSettingsFilePath();
     
     // Check if settings file exists
-    const exists = await window.__TAURI__.core.invoke("file_exists", { file_path: filePath });
-    
-    if (!exists) {
-      // File doesn't exist, save default settings
+    if (await fileExists(filePath)) {
+      const content = await fsReadFile(filePath);
+      if (content) {
+        const loadedSettings = JSON.parse(content);
+        // Deep merge with default settings to ensure all keys are present
+        window.settings = deepMerge(window.settings, loadedSettings);
+        console.log("Settings loaded successfully");
+      }
+    } else {
+      console.log("Settings file not found, creating with defaults.");
       await saveSettings();
-      return;
     }
-    
-    // Read settings file
-    const content = await window.__TAURI__.core.invoke("read_text_file", { file_path: filePath });
-    const loadedSettings = JSON.parse(content);
-    
-    // Merge loaded settings with current settings
-    window.settings = { ...window.settings, ...loadedSettings };
   } catch (err) {
-    console.error('Error loading settings:', err);
-    // If there's any error, try to create the file with default settings
-    await saveSettings();
+    console.error("Error loading settings:", err);
   }
 }
 
@@ -633,9 +678,7 @@ async function saveSettings() {
   try {
     const filePath = await getSettingsFilePath();
     const content = JSON.stringify(window.settings, null, 2);
-    
-    // Write settings to file
-    await window.__TAURI__.core.invoke("write_text_file", { file_path: filePath, content });
+    await fsWriteFile(filePath, content);
   } catch (err) {
     console.error("Failed to save settings:", err);
   }
@@ -1433,151 +1476,7 @@ async function initTerminal() {
   }
 }
 
-// Initialize diagnostics system
-async function initDiagnostics() {
-  try {
-    // Initialize diagnostics manager, passing the file explorer instance
-    diagnosticsManager = new DiagnosticsManager(fileExplorer);
-    
-    // Make manager globally available
-    window.diagnosticsManager = diagnosticsManager;
-    
-    // Set up refresh button event listener
-    const refreshBtn = document.getElementById('diagnostics-refresh-btn');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => {
-        if (diagnosticsManager) {
-          diagnosticsManager.forceRefresh();
-        }
-      });
-    }
 
-    // Set up debug toggle button
-    const debugBtn = document.getElementById('diagnostics-debug-btn');
-    if (debugBtn) {
-      debugBtn.addEventListener('click', () => {
-        if (diagnosticsManager) {
-          diagnosticsManager.toggleDebugMode();
-        }
-      });
-    }
-
-    // Set up test button
-    const testBtn = document.getElementById('diagnostics-test-btn');
-    if (testBtn) {
-      testBtn.addEventListener('click', () => {
-        if (diagnosticsManager) {
-          diagnosticsManager.testWithSampleDiagnostics();
-        }
-      });
-    }
-
-    // Set up open test file button
-    const openTestFileBtn = document.getElementById('diagnostics-open-test-file-btn');
-    if (openTestFileBtn) {
-      openTestFileBtn.addEventListener('click', async () => {
-        try {
-          if (fileExplorer && fileExplorer.rootFolder) {
-            // Create test file path in the current workspace
-            const testFilePath = `${fileExplorer.rootFolder}/src/test-diagnostics.js`;
-            console.log('Attempting to open test file at:', testFilePath);
-            
-            // Try to open the file first
-            try {
-              await fileExplorer.openFileByPath(testFilePath);
-              console.log('Opened existing test file:', testFilePath);
-            } catch (error) {
-              console.log('Test file does not exist, creating it:', error.message);
-              
-              // Create the test file content
-              const testContent = `// Test file for diagnostics
-console.log("This should trigger a warning");
-debugger; // This should trigger a warning
-
-var oldStyle = "this should suggest let/const"; // This should trigger an info message
-
-// TODO: This is a test todo comment
-// FIXME: This needs to be fixed
-
-function testFunction() {
-    let x = 5
-    let y = 10 // Missing semicolon
-    
-    if (x == y) { // Should suggest ===
-        return x + y
-    }
-    
-    return false; // This line is fine
-}
-
-let unused = "this variable might be unused"; // Might trigger unused warning
-
-console.warn("Another console statement");
-console.error("Error console statement");
-
-// This function has issues
-function problemFunction() {
-    var problem = "another var usage"
-    return problem
-}`;
-
-              // Write the test file
-              await writeTextFile(testFilePath, testContent);
-              
-              // Open the newly created file
-              await fileExplorer.openFileByPath(testFilePath);
-              console.log('Created and opened test file:', testFilePath);
-            }
-            
-            // Refresh diagnostics after opening the file
-            setTimeout(() => {
-              if (diagnosticsManager) {
-                diagnosticsManager.refresh();
-              }
-            }, 100);
-          } else {
-            console.error('File explorer not available or no workspace open');
-            alert('Please open a workspace folder first');
-          }
-        } catch (error) {
-          console.error('Failed to open/create test file:', error);
-          alert('Failed to open/create test file: ' + error.message);
-        }
-      });
-    }
-    
-    // Set up integration with file system events
-    document.addEventListener('folder-opened', (e) => {
-      if (diagnosticsManager && e.detail.path) {
-        // Refresh diagnostics when a new project is opened
-        setTimeout(() => {
-          diagnosticsManager.refresh();
-        }, 1000); // Small delay to let file system settle
-      }
-    });
-
-    // Refresh diagnostics when files are opened
-    document.addEventListener('file-opened', (e) => {
-      if (diagnosticsManager && e.detail.path) {
-        // Small delay to let file system settle
-        setTimeout(() => {
-          diagnosticsManager.refresh(e.detail.path);
-        }, 100); // Reduced delay for faster response
-      }
-    });
-
-    // Refresh diagnostics when current file changes
-    document.addEventListener('no-file-selected', () => {
-      if (diagnosticsManager) {
-        diagnosticsManager.refresh(null);
-      }
-    });
-    
-    console.log('Diagnostics initialized');
-  } catch (err) {
-    console.error('Failed to initialize diagnostics:', err);
-  }
-}
 
 // Initialize settings watcher
 function initSettingsWatcher() {
@@ -1613,16 +1512,16 @@ function applySettingsChanges(oldSettings, newSettings) {
     applyTheme(newSettings.theme);
   }
   
-  // Apply font size changes to Monaco Editor
+  // Apply font size changes to CodeMirror Editor
   if (oldSettings.fontSize !== newSettings.fontSize && editorInstance) {
-    editorInstance.editor?.updateOptions({
+    editorInstance.updateOptions({
       fontSize: newSettings.fontSize
     });
   }
   
-  // Apply tab size changes to Monaco Editor
+  // Apply tab size changes to CodeMirror Editor
   if (oldSettings.tabSize !== newSettings.tabSize && editorInstance) {
-    editorInstance.editor?.updateOptions({
+    editorInstance.updateOptions({
       tabSize: newSettings.tabSize
     });
   }
@@ -1670,10 +1569,9 @@ function applyTheme(theme) {
     root.style.setProperty('--inactive-tab-bg', '#f3f3f3');
   }
   
-  // Update Monaco Editor theme
-  if (editorInstance && editorInstance.editor) {
-    const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs';
-    monaco.editor.setTheme(monacoTheme);
+  // Update CodeMirror theme
+  if (editorInstance && editorInstance.updateTheme) {
+    editorInstance.updateTheme();
   }
 }
 

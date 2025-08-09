@@ -14,7 +14,29 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          monaco: ['monaco-editor']
+          codemirror: [
+            '@codemirror/state',
+            '@codemirror/view',
+            '@codemirror/language',
+            '@codemirror/theme-one-dark',
+            '@codemirror/commands',
+            '@codemirror/search',
+            '@codemirror/autocomplete',
+            '@codemirror/lint'
+          ],
+          'codemirror-langs': [
+            '@codemirror/lang-javascript',
+            '@codemirror/lang-html',
+            '@codemirror/lang-css',
+            '@codemirror/lang-json',
+            '@codemirror/lang-markdown',
+            '@codemirror/lang-python',
+            '@codemirror/lang-rust',
+            '@codemirror/lang-go',
+            '@codemirror/lang-cpp',
+            '@codemirror/lang-java',
+            '@codemirror/lang-php'
+          ]
         }
       },
       external: []
@@ -30,7 +52,30 @@ export default defineConfig({
   clearScreen: false,
   envPrefix: ['VITE_', 'TAURI_'],
   optimizeDeps: {
-    include: ['monaco-editor', '@xterm/xterm', '@xterm/addon-fit'],
+    include: [
+      '@xterm/xterm', 
+      '@xterm/addon-fit',
+      '@codemirror/state',
+      '@codemirror/view',
+      '@codemirror/language',
+      '@codemirror/theme-one-dark',
+      '@codemirror/commands',
+      '@codemirror/search',
+      '@codemirror/autocomplete',
+      '@codemirror/lint',
+      '@codemirror/lang-javascript',
+      '@codemirror/lang-html',
+      '@codemirror/lang-css',
+      '@codemirror/lang-json',
+      '@codemirror/lang-markdown',
+      '@codemirror/lang-python',
+      '@codemirror/lang-rust',
+      '@codemirror/lang-go',
+      '@codemirror/lang-cpp',
+      '@codemirror/lang-java',
+      '@codemirror/lang-php',
+      '@lezer/highlight'
+    ],
     exclude: []
   },
   define: {

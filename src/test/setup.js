@@ -25,23 +25,23 @@ vi.mock('@tauri-apps/api/event', () => ({
   emit: vi.fn(),
 }));
 
-// Mock Monaco Editor
-vi.mock('monaco-editor', () => ({
-  editor: {
-    create: vi.fn(() => ({
-      dispose: vi.fn(),
-      getValue: vi.fn(() => ''),
-      setValue: vi.fn(),
-      focus: vi.fn(),
-      setPosition: vi.fn(),
-      onDidChangeModelContent: vi.fn(),
-    })),
-    setTheme: vi.fn(),
+// Mock CodeMirror (if needed for tests)
+vi.mock('@codemirror/view', () => ({
+  EditorView: class MockEditorView {
+    constructor() {
+      this.state = { doc: { toString: () => '' } };
+    }
+    destroy() {}
+    focus() {}
+    dispatch() {}
   },
-  languages: {
-    register: vi.fn(),
-    setMonarchTokensProvider: vi.fn(),
-  },
+  lineNumbers: () => [],
+  highlightActiveLineGutter: () => [],
+  highlightSpecialChars: () => [],
+  drawSelection: () => [],
+  dropCursor: () => [],
+  rectangularSelection: () => [],
+  keymap: { of: () => [] }
 }));
 
 // Mock XTerm
