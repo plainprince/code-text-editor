@@ -110,6 +110,7 @@ class OutlinePanel {
     const fileName = this.currentEditor.currentFile?.name || 'untitled';
     const sourceCode = this.currentEditor.content || '';
     const languageId = this.getLanguageFromFileName(fileName);
+    const queries = this.getQueriesForLanguage(languageId);
 
         try {
       // Debug Tauri availability
@@ -130,7 +131,8 @@ class OutlinePanel {
         const symbols = await window.__TAURI__.core.invoke('parse_document_symbols', {
           source_code: sourceCode,
           language_id: languageId,
-          file_path: fileName
+          file_path: fileName,
+          queries: queries
         });
 
         console.log(`✅ Tree-sitter parsed ${symbols.length} symbols for ${languageId}`);
@@ -173,6 +175,25 @@ class OutlinePanel {
     };
     return languageMap[ext] || 'plaintext';
   }
+
+  getQueriesForLanguage(languageId) {
+    if (languageId === 'javascript' || languageId === 'typescript') {
+        return [
+            { kind: 'function', query: '(function_declaration name: (identifier) @name)' },
+            { kind: 'function', query: '(method_definition name: (property_identifier) @name)' },
+            { kind: 'function', query: '(variable_declarator name: (identifier) @name value: (arrow_function))' },
+            { kind: 'function', query: '(variable_declarator name: (identifier) @name value: (function_expression))' },
+            { kind: 'variable', query: '(variable_declarator name: (identifier) @name)' },
+            { kind: 'class', query: '(class_declaration name: (identifier) @name)' },
+            { kind: 'function', query: '(call_expression function: (member_expression property: (property_identifier) @name))' },
+            { kind: 'function', query: '(call_expression function: (identifier) @name)' },
+            { kind: 'struct', query: '(for_statement) @name' },
+            { kind: 'struct', query: '(while_statement) @name' },
+            { kind: 'struct', query: '(if_statement) @name' },
+        ];
+    }
+    return [];
+}
 
   // Clear the outline
   clearOutline() {
@@ -273,7 +294,9 @@ class OutlinePanel {
 
   // Get icon for symbol kind
   getSymbolIcon(kind) {
-    return this.symbolIcons[kind] || this.symbolIcons['variable'];
+    // Ensure kind is a string and lowercase
+    const normalizedKind = String(kind || '').toLowerCase();
+    return this.symbolIcons[normalizedKind] || this.symbolIcons['variable'];
   }
 
   // Get unique identifier for symbol
@@ -309,12 +332,12 @@ class OutlinePanel {
     if (!this.currentEditor || !symbol.range) return;
 
     // Reveal the symbol in the editor
-    this.currentEditor.revealLineInCenter(symbol.range.startLineNumber);
+    this.currentEditor.revealLineInCenter(symbol.range.start_line_number);
 
     // Set cursor position to the symbol
     this.currentEditor.setPosition({
-      lineNumber: symbol.range.startLineNumber,
-      column: symbol.range.startColumn
+      lineNumber: symbol.range.start_line_number,
+      column: symbol.range.start_column
     });
 
     // Focus the editor
@@ -322,7 +345,12 @@ class OutlinePanel {
 
     // Optionally select the symbol
     if (symbol.selectionRange) {
-      this.currentEditor.setSelection(symbol.selectionRange);
+      this.currentEditor.setSelection({
+        startLineNumber: symbol.selection_range.start_line_number,
+        startColumn: symbol.selection_range.start_column,
+        endLineNumber: symbol.selection_range.end_line_number,
+        endColumn: symbol.selection_range.end_column
+    });
     }
   }
 

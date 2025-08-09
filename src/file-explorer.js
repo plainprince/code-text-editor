@@ -37,6 +37,10 @@ class FileExplorer {
       this.files = files;
       this.renderFileTree(files, this.container);
       this.lastRecursiveCount = await this.getRecursiveFileCount(folderPath);
+
+      // Update project panel header
+      const projectName = folderPath.split('/').pop();
+      document.querySelector("#project-panel .sidebar-panel-header").textContent = projectName;
       
       // Start watching for file system changes
       this.stopWatching(); // Stop any existing watcher
@@ -71,6 +75,10 @@ class FileExplorer {
       this.rootFolder = selected;
       const files = await readDirectory(selected + '/');
       this.files = files;
+
+      // Update project panel header
+      const projectName = selected.split('/').pop();
+      document.querySelector("#project-panel .sidebar-panel-header").textContent = projectName;
       
       // Load and validate expanded state
       this.loadExpandedState();

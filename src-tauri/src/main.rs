@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
-use tree_sitter::{Language, Parser, Node, Tree};
+use tree_sitter::{Language, Parser, Node, Tree, StreamingIterator};
 
 #[tauri::command(rename_all = "snake_case")]
 fn get_app_support_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
@@ -66,7 +66,7 @@ fn get_language(language_id: &str) -> Result<Language, String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DocumentSymbol {
     name: String,
-    kind: u8, // SymbolKind as number
+    kind: String, // SymbolKind as number
     range: Range,
     selection_range: Range,
     children: Vec<DocumentSymbol>,
@@ -78,6 +78,12 @@ struct Range {
     start_column: u32,
     end_line_number: u32,
     end_column: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SymbolQuery {
+    kind: String,
+    query: String,
 }
 
 // File system commands
@@ -870,7 +876,8 @@ fn check_command_exists(command: String) -> Result<bool, String> {
 fn parse_document_symbols(
     source_code: String,
     language_id: String,
-    _file_path: String
+    _file_path: String,
+    queries: Vec<SymbolQuery>,
 ) -> Result<Vec<DocumentSymbol>, String> {
     let language = get_language(&language_id)?;
 
@@ -881,143 +888,265 @@ fn parse_document_symbols(
     let tree = parser.parse(&source_code, None)
         .ok_or("Failed to parse source code")?;
 
-    let symbols = extract_symbols_from_tree(&tree, &source_code, &language_id);
+    let symbols = extract_symbols_from_tree(&tree, &source_code, &language_id, &queries);
     Ok(symbols)
 }
 
-fn extract_symbols_from_tree(tree: &Tree, source_code: &str, language_id: &str) -> Vec<DocumentSymbol> {
+fn extract_symbols_from_tree(tree: &Tree, source_code: &str, language_id: &str, queries: &Vec<SymbolQuery>) -> Vec<DocumentSymbol> {
     let root_node = tree.root_node();
     let mut symbols = Vec::new();
     
     match language_id {
         "javascript" | "jsx" | "typescript" | "tsx" => {
-            extract_js_symbols(root_node, source_code, &mut symbols);
+            extract_js_symbols(root_node, source_code, &mut symbols, queries);
         },
         "python" => {
-            extract_python_symbols(root_node, source_code, &mut symbols);
+            extract_python_symbols(root_node, source_code, &mut symbols, queries);
         },
         "rust" => {
-            extract_rust_symbols(root_node, source_code, &mut symbols);
+            extract_rust_symbols(root_node, source_code, &mut symbols, queries);
         },
         "go" => {
-            extract_go_symbols(root_node, source_code, &mut symbols);
+            extract_go_symbols(root_node, source_code, &mut symbols, queries);
         },
         _ => {
-            extract_generic_symbols(root_node, source_code, &mut symbols);
+            extract_generic_symbols(root_node, source_code, &mut symbols, queries);
         }
     }
     
     symbols
 }
 
-fn extract_js_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_js_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
     let mut cursor = node.walk();
     
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "function_declaration" | "function" | "arrow_function" | "method_definition" => {
-                if let Some(symbol) = create_js_function_symbol(child, source_code) {
+            "function_declaration" | "method_definition" => {
+                if let Some(symbol) = create_function_symbol(child, source_code, queries) {
                     symbols.push(symbol);
                 }
             },
             "class_declaration" => {
-                if let Some(symbol) = create_js_class_symbol(child, source_code) {
+                if let Some(symbol) = create_class_symbol(child, source_code, queries) {
                     symbols.push(symbol);
                 }
             },
-            "variable_declaration" => {
-                extract_js_variables(child, source_code, symbols);
+            "variable_declaration" | "lexical_declaration" => {
+                extract_variable_declarations(child, source_code, symbols, queries);
+            },
+            "for_statement" | "while_statement" | "if_statement" => {
+                if let Some(symbol) = create_control_flow_symbol(child, source_code, queries) {
+                    symbols.push(symbol);
+                }
+            },
+            "expression_statement" => {
+                // Check for function calls like console.log()
+                if let Some(call_expr) = child.child(0) {
+                    if call_expr.kind() == "call_expression" {
+                        if let Some(symbol) = create_call_symbol(call_expr, source_code) {
+                            symbols.push(symbol);
+                        }
+                    }
+                }
+                // Recurse for other expressions
+                extract_js_symbols(child, source_code, symbols, queries);
             },
             _ => {
-                // Recursively check children
-                extract_js_symbols(child, source_code, symbols);
+                // Recursively check children for other constructs
+                extract_js_symbols(child, source_code, symbols, queries);
             }
         }
     }
 }
 
-fn create_js_function_symbol(node: Node, source_code: &str) -> Option<DocumentSymbol> {
-    let name = find_function_name(node, source_code)?;
+fn create_function_symbol(node: Node, source_code: &str, queries: &Vec<SymbolQuery>) -> Option<DocumentSymbol> {
+    let name = if let Some(name_node) = node.child_by_field_name("name") {
+        name_node.utf8_text(source_code.as_bytes()).unwrap_or("anonymous").to_string()
+    } else {
+        "anonymous".to_string()
+    };
+    
     let range = node_to_range(node);
-    let selection_range = range.clone();
-    
-    let mut children = Vec::new();
-    extract_js_symbols(node, source_code, &mut children);
-    
-    Some(DocumentSymbol {
-        name,
-        kind: 12, // Function
-        range,
-        selection_range,
-        children,
-    })
-}
-
-fn create_js_class_symbol(node: Node, source_code: &str) -> Option<DocumentSymbol> {
-    let name = find_class_name(node, source_code)?;
-    let range = node_to_range(node);
-    let selection_range = range.clone();
-    
     let mut children = Vec::new();
     
-    // Extract methods and properties from class body
+    // Extract children from function body
     if let Some(body) = node.child_by_field_name("body") {
-        extract_js_symbols(body, source_code, &mut children);
+        extract_js_symbols(body, source_code, &mut children, queries);
     }
     
     Some(DocumentSymbol {
         name,
-        kind: 5, // Class
-        range,
-        selection_range,
+        kind: "function".to_string(),
+        range: range.clone(),
+        selection_range: range,
         children,
     })
 }
 
-fn extract_js_variables(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn create_class_symbol(node: Node, source_code: &str, queries: &Vec<SymbolQuery>) -> Option<DocumentSymbol> {
+    let name = if let Some(name_node) = node.child_by_field_name("name") {
+        name_node.utf8_text(source_code.as_bytes()).unwrap_or("unnamed").to_string()
+    } else {
+        return None;
+    };
+    
+    let range = node_to_range(node);
+    let mut children = Vec::new();
+    
+    // Extract methods from class body
+    if let Some(body) = node.child_by_field_name("body") {
+        extract_js_symbols(body, source_code, &mut children, queries);
+    }
+    
+    Some(DocumentSymbol {
+        name,
+        kind: "class".to_string(),
+        range: range.clone(),
+        selection_range: range,
+        children,
+    })
+}
+
+fn extract_variable_declarations(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
     let mut cursor = node.walk();
     
-    for child in node.children(&mut cursor) {
-        if child.kind() == "variable_declarator" {
-            if let Some(name_node) = child.child_by_field_name("name") {
+    for declarator in node.children(&mut cursor) {
+        if declarator.kind() == "variable_declarator" {
+            if let Some(name_node) = declarator.child_by_field_name("name") {
                 let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("unknown").to_string();
-                let range = node_to_range(child);
+                let range = node_to_range(declarator);
                 
-                symbols.push(DocumentSymbol {
-                    name,
-                    kind: 13, // Variable
-                    range: range.clone(),
-                    selection_range: range,
-                    children: Vec::new(),
-                });
+                // Check if this is a function assignment
+                if let Some(value_node) = declarator.child_by_field_name("value") {
+                    match value_node.kind() {
+                        "arrow_function" | "function_expression" => {
+                            let mut children = Vec::new();
+                            if let Some(body) = value_node.child_by_field_name("body") {
+                                extract_js_symbols(body, source_code, &mut children, queries);
+                            }
+                            
+                            symbols.push(DocumentSymbol {
+                                name,
+                                kind: "function".to_string(),
+                                range: range.clone(),
+                                selection_range: range,
+                                children,
+                            });
+                        },
+                        _ => {
+                            symbols.push(DocumentSymbol {
+                                name,
+                                kind: "variable".to_string(),
+                                range: range.clone(),
+                                selection_range: range,
+                                children: Vec::new(),
+                            });
+                        }
+                    }
+                } else {
+                    symbols.push(DocumentSymbol {
+                        name,
+                        kind: "variable".to_string(),
+                        range: range.clone(),
+                        selection_range: range,
+                        children: Vec::new(),
+                    });
+                }
             }
         }
     }
 }
 
-fn find_function_name(node: Node, source_code: &str) -> Option<String> {
-    // Try to find name field first
-    if let Some(name_node) = node.child_by_field_name("name") {
-        return Some(name_node.utf8_text(source_code.as_bytes()).unwrap_or("anonymous").to_string());
+fn create_control_flow_symbol(node: Node, source_code: &str, queries: &Vec<SymbolQuery>) -> Option<DocumentSymbol> {
+    let name = match node.kind() {
+        "for_statement" => {
+            if let Some(condition) = node.child_by_field_name("condition") {
+                format!("for ({})", condition.utf8_text(source_code.as_bytes()).unwrap_or(""))
+            } else {
+                "for loop".to_string()
+            }
+        },
+        "while_statement" => {
+            if let Some(condition) = node.child_by_field_name("condition") {
+                format!("while ({})", condition.utf8_text(source_code.as_bytes()).unwrap_or(""))
+            } else {
+                "while loop".to_string()
+            }
+        },
+        "if_statement" => {
+            if let Some(condition) = node.child_by_field_name("condition") {
+                format!("if ({})", condition.utf8_text(source_code.as_bytes()).unwrap_or(""))
+            } else {
+                "if statement".to_string()
+            }
+        },
+        _ => return None,
+    };
+    
+    let range = node_to_range(node);
+    let mut children = Vec::new();
+    
+    // Extract children from body
+    if let Some(body) = node.child_by_field_name("body") {
+        extract_js_symbols(body, source_code, &mut children, queries);
+    }
+    if let Some(consequence) = node.child_by_field_name("consequence") {
+        extract_js_symbols(consequence, source_code, &mut children, queries);
+    }
+    if let Some(alternative) = node.child_by_field_name("alternative") {
+        extract_js_symbols(alternative, source_code, &mut children, queries);
     }
     
-    // For arrow functions and other patterns, look for identifier
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "identifier" {
-            return Some(child.utf8_text(source_code.as_bytes()).unwrap_or("anonymous").to_string());
-        }
-    }
-    
-    Some("anonymous".to_string())
+    Some(DocumentSymbol {
+        name,
+        kind: "struct".to_string(),
+        range: range.clone(),
+        selection_range: range,
+        children,
+    })
 }
 
-fn find_class_name(node: Node, source_code: &str) -> Option<String> {
-    if let Some(name_node) = node.child_by_field_name("name") {
-        return Some(name_node.utf8_text(source_code.as_bytes()).unwrap_or("unnamed").to_string());
-    }
-    None
+fn create_call_symbol(node: Node, source_code: &str) -> Option<DocumentSymbol> {
+    let name = if let Some(function_node) = node.child_by_field_name("function") {
+        match function_node.kind() {
+            "member_expression" => {
+                // Handle object.method() calls
+                if let Some(object) = function_node.child_by_field_name("object") {
+                    if let Some(property) = function_node.child_by_field_name("property") {
+                        let obj_name = object.utf8_text(source_code.as_bytes()).unwrap_or("");
+                        let prop_name = property.utf8_text(source_code.as_bytes()).unwrap_or("");
+                        format!("{}.{}", obj_name, prop_name)
+                    } else {
+                        function_node.utf8_text(source_code.as_bytes()).unwrap_or("call").to_string()
+                    }
+                } else {
+                    function_node.utf8_text(source_code.as_bytes()).unwrap_or("call").to_string()
+                }
+            },
+            "identifier" => {
+                function_node.utf8_text(source_code.as_bytes()).unwrap_or("call").to_string()
+            },
+            _ => {
+                function_node.utf8_text(source_code.as_bytes()).unwrap_or("call").to_string()
+            }
+        }
+    } else {
+        return None;
+    };
+    
+    let range = node_to_range(node);
+    
+    Some(DocumentSymbol {
+        name,
+        kind: "function".to_string(),
+        range: range.clone(),
+        selection_range: range,
+        children: Vec::new(),
+    })
 }
+
+
 
 fn node_to_range(node: Node) -> Range {
     let start = node.start_position();
@@ -1032,22 +1161,22 @@ fn node_to_range(node: Node) -> Range {
 }
 
 // Placeholder implementations for other languages
-fn extract_python_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_python_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
     // TODO: Implement Python symbol extraction
-    extract_generic_symbols(node, source_code, symbols);
+    extract_generic_symbols(node, source_code, symbols, queries);
 }
 
-fn extract_rust_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_rust_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
     // TODO: Implement Rust symbol extraction  
-    extract_generic_symbols(node, source_code, symbols);
+    extract_generic_symbols(node, source_code, symbols, queries);
 }
 
-fn extract_go_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_go_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
     // TODO: Implement Go symbol extraction
-    extract_generic_symbols(node, source_code, symbols);
+    extract_generic_symbols(node, source_code, symbols, queries);
 }
 
-fn extract_generic_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_generic_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, _queries: &Vec<SymbolQuery>) {
     let mut cursor = node.walk();
     
     for child in node.children(&mut cursor) {
@@ -1058,7 +1187,7 @@ fn extract_generic_symbols(node: Node, source_code: &str, symbols: &mut Vec<Docu
             if let Some(name) = get_generic_name(child, source_code) {
                 symbols.push(DocumentSymbol {
                     name,
-                    kind: 12, // Function
+                    kind: "function".to_string(), // Function
                     range: node_to_range(child),
                     selection_range: node_to_range(child),
                     children: Vec::new(),
@@ -1068,7 +1197,7 @@ fn extract_generic_symbols(node: Node, source_code: &str, symbols: &mut Vec<Docu
             if let Some(name) = get_generic_name(child, source_code) {
                 symbols.push(DocumentSymbol {
                     name,
-                    kind: 5, // Class
+                    kind: "class".to_string(), // Class
                     range: node_to_range(child),
                     selection_range: node_to_range(child),
                     children: Vec::new(),
@@ -1076,7 +1205,7 @@ fn extract_generic_symbols(node: Node, source_code: &str, symbols: &mut Vec<Docu
             }
         } else {
             // Recurse into children
-            extract_generic_symbols(child, source_code, symbols);
+            extract_generic_symbols(child, source_code, symbols, &Vec::new());
         }
     }
 }
