@@ -10,6 +10,7 @@ import DraggablePanes from './draggable-panes.js';
 import { getWorkspaceFiles, searchInFiles, fileExists, writeFile as fsWriteFile, readFile as fsReadFile } from './file-system.js';
 import { writeTextFile, shutdownAllLanguageServers } from './tauri-helpers.js';
 import OutlinePanel from './outline.js';
+import GitPanel from './git-panel.js';
 import { createDefaultThemeSettings } from './theme-system.js';
 
 window.addEventListener('beforeunload', () => {
@@ -41,6 +42,7 @@ let currentFilePath = null;
 let fileExplorer = null;
 let editorInstance = null;
 let outlinePanel = null;
+let gitPanel = null;
 let tabManager = null;
 
 let terminalInstance = null;
@@ -81,6 +83,7 @@ let availableCommands = [
   { id: 'open-settings', name: 'Open Settings', action: () => openSettings() },
   { id: 'open-project', name: 'Open Project', action: () => document.getElementById("open-project-button").click() },
   { id: 'toggle-terminal', name: 'Toggle Terminal', action: () => setBottomPanel(currentBottomPanel === 'terminal' ? null : 'terminal') },
+  { id: 'toggle-git-panel', name: 'Toggle Git Panel', action: () => setLeftPanel(currentLeftPanel === 'git-panel' ? 'project-panel' : 'git-panel') },
   { id: 'search-files', name: 'Search in Files', action: () => openSearch() },
   { id: 'close-tab', name: 'Close Tab', action: () => tabManager?.closeTab(tabManager.activeTabId) },
   { id: 'close-other-tabs', name: 'Close Other Tabs', action: () => tabManager?.closeOtherTabs() },
@@ -112,6 +115,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   
   // Initialize outline panel
   initOutlinePanel();
+  
+  // Initialize git panel
+  initGitPanel();
   
   // Initialize language servers panel
 
@@ -1417,6 +1423,15 @@ function initFileExplorer() {
 function initOutlinePanel() {
   // Create outline panel instance
   outlinePanel = new OutlinePanel();
+}
+
+// Initialize git panel
+function initGitPanel() {
+  // Create git panel instance
+  gitPanel = new GitPanel();
+  
+  // Make it globally available
+  window.gitPanel = gitPanel;
 }
 
 // Initialize language servers panel

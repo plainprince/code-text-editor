@@ -38,6 +38,217 @@ fn run_command(command: String, args: Vec<String>, cwd: String) -> Result<String
     }
 }
 
+// Git-related structures
+#[derive(Debug, Serialize, Deserialize)]
+struct GitFileStatus {
+    path: String,
+    status: String, // M, A, D, ??, etc.
+    staged: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GitStatus {
+    files: Vec<GitFileStatus>,
+    branch: Option<String>,
+    ahead: u32,
+    behind: u32,
+    is_clean: bool,
+}
+
+// Git commands
+#[tauri::command]
+async fn git_is_repository(path: String) -> Result<bool, String> {
+    let git_dir = Path::new(&path).join(".git");
+    Ok(git_dir.exists())
+}
+
+#[tauri::command]
+async fn git_init(path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(&["init"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to initialize git repository: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+async fn git_status(path: String) -> Result<GitStatus, String> {
+    // Check if it's a git repository
+    if !git_is_repository(path.clone()).await? {
+        return Err("Not a git repository".to_string());
+    }
+
+    // Get branch name
+    let branch_output = Command::new("git")
+        .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to get branch name: {}", e))?;
+
+    let branch = if branch_output.status.success() {
+        let branch_name = String::from_utf8_lossy(&branch_output.stdout).trim().to_string();
+        if branch_name.is_empty() || branch_name == "HEAD" {
+            None
+        } else {
+            Some(branch_name)
+        }
+    } else {
+        None
+    };
+
+    // Get status --porcelain
+    let status_output = Command::new("git")
+        .args(&["status", "--porcelain"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to get git status: {}", e))?;
+
+    if !status_output.status.success() {
+        return Err(String::from_utf8_lossy(&status_output.stderr).to_string());
+    }
+
+    let status_text = String::from_utf8_lossy(&status_output.stdout);
+    let mut files = Vec::new();
+
+    for line in status_text.lines() {
+        if line.len() >= 3 {
+            let staged_status = &line[0..1];
+            let unstaged_status = &line[1..2];
+            let file_path = &line[3..];
+
+            // Create entries for staged changes
+            if staged_status != " " {
+                files.push(GitFileStatus {
+                    path: file_path.to_string(),
+                    status: staged_status.to_string(),
+                    staged: true,
+                });
+            }
+
+            // Create entries for unstaged changes
+            if unstaged_status != " " {
+                files.push(GitFileStatus {
+                    path: file_path.to_string(),
+                    status: unstaged_status.to_string(),
+                    staged: false,
+                });
+            }
+        }
+    }
+
+    // Get ahead/behind count
+    let (ahead, behind) = if branch.is_some() {
+        let ahead_behind_output = Command::new("git")
+            .args(&["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+            .current_dir(&path)
+            .output();
+
+        if let Ok(output) = ahead_behind_output {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let parts: Vec<&str> = text.split('\t').collect();
+                if parts.len() == 2 {
+                    let ahead = parts[0].parse().unwrap_or(0);
+                    let behind = parts[1].parse().unwrap_or(0);
+                    (ahead, behind)
+                } else {
+                    (0, 0)
+                }
+            } else {
+                (0, 0)
+            }
+        } else {
+            (0, 0)
+        }
+    } else {
+        (0, 0)
+    };
+
+    Ok(GitStatus {
+        is_clean: files.is_empty(),
+        files,
+        branch,
+        ahead,
+        behind,
+    })
+}
+
+#[tauri::command]
+async fn git_add(path: String, file_path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(&["add", &file_path])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to add file: {}", e))?;
+
+    if output.status.success() {
+        Ok("File added successfully".to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+async fn git_reset(path: String, file_path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(&["reset", "HEAD", &file_path])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to reset file: {}", e))?;
+
+    if output.status.success() {
+        Ok("File unstaged successfully".to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+async fn git_commit(path: String, message: String) -> Result<String, String> {
+    if message.trim().is_empty() {
+        return Err("Commit message cannot be empty".to_string());
+    }
+
+    let output = Command::new("git")
+        .args(&["commit", "-m", &message])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to commit: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+async fn git_diff(path: String, file_path: Option<String>) -> Result<String, String> {
+    let mut args = vec!["diff"];
+    
+    if let Some(file) = &file_path {
+        args.push(file);
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to get diff: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 // Language Server Management
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LanguageServerProcess {
@@ -2094,7 +2305,14 @@ fn main() {
             check_command_exists,
             parse_document_symbols,
             get_app_support_dir,
-            run_command
+            run_command,
+            git_status,
+            git_add,
+            git_reset,
+            git_commit,
+            git_init,
+            git_diff,
+            git_is_repository
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
