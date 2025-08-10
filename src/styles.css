@@ -1644,6 +1644,12 @@ body {
   background: #FF9800;
 }
 
+.git-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.git-sync-btn,
 .git-refresh-btn {
   background: none;
   border: none;
@@ -1652,11 +1658,25 @@ body {
   padding: 4px;
   border-radius: 3px;
   opacity: 0.7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+.git-sync-btn:hover,
 .git-refresh-btn:hover {
   background: var(--button-hover-bg);
   opacity: 1;
+}
+
+.git-sync-btn {
+  color: var(--accent-color);
+  opacity: 1;
+}
+
+.git-sync-btn:hover {
+  background: var(--accent-color);
+  color: white;
 }
 
 .refresh-icon {
@@ -1702,15 +1722,23 @@ body {
   gap: 8px;
 }
 
+.git-commit-btn-group {
+  display: flex;
+  position: relative;
+}
+
 .git-commit-btn {
   background: var(--accent-color);
   color: white;
   border: none;
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: 4px 0 0 4px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .git-commit-btn:hover:not(:disabled) {
@@ -1722,6 +1750,67 @@ body {
   color: var(--text-color);
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.git-commit-dropdown {
+  position: relative;
+}
+
+.git-commit-dropdown-btn {
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 6px 8px;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.git-commit-dropdown-btn:hover {
+  background: #3a7bc8;
+}
+
+.git-commit-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  margin-top: 4px;
+  min-width: 160px;
+}
+
+.git-commit-option {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.git-commit-option:hover {
+  background: var(--button-hover-bg);
+}
+
+.git-commit-option:first-child {
+  border-radius: 4px 4px 0 0;
+}
+
+.git-commit-option:last-child {
+  border-radius: 0 0 4px 4px;
 }
 
 /* Changes Sections */

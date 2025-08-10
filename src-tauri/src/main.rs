@@ -122,17 +122,32 @@ async fn git_status(path: String) -> Result<GitStatus, String> {
             let unstaged_status = &line[1..2];
             let file_path = &line[3..];
 
-            // Create entries for staged changes
-            if staged_status != " " {
+            // For git status porcelain format:
+            // - First character is staged status
+            // - Second character is unstaged status
+            // We need to create separate entries only when they're different scenarios
+
+            if staged_status != " " && unstaged_status != " " {
+                // File has both staged and unstaged changes - show both
                 files.push(GitFileStatus {
                     path: file_path.to_string(),
                     status: staged_status.to_string(),
                     staged: true,
                 });
-            }
-
-            // Create entries for unstaged changes
-            if unstaged_status != " " {
+                files.push(GitFileStatus {
+                    path: file_path.to_string(),
+                    status: unstaged_status.to_string(),
+                    staged: false,
+                });
+            } else if staged_status != " " {
+                // Only staged changes
+                files.push(GitFileStatus {
+                    path: file_path.to_string(),
+                    status: staged_status.to_string(),
+                    staged: true,
+                });
+            } else if unstaged_status != " " {
+                // Only unstaged changes
                 files.push(GitFileStatus {
                     path: file_path.to_string(),
                     status: unstaged_status.to_string(),
@@ -241,6 +256,75 @@ async fn git_diff(path: String, file_path: Option<String>) -> Result<String, Str
         .current_dir(&path)
         .output()
         .map_err(|e| format!("Failed to get diff: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+async fn git_push(path: String, remote: Option<String>, branch: Option<String>) -> Result<String, String> {
+    let mut args = vec!["push"];
+    
+    if let Some(remote_name) = &remote {
+        args.push(remote_name);
+        if let Some(branch_name) = &branch {
+            args.push(branch_name);
+        }
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to push: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+async fn git_pull(path: String, remote: Option<String>, branch: Option<String>) -> Result<String, String> {
+    let mut args = vec!["pull"];
+    
+    if let Some(remote_name) = &remote {
+        args.push(remote_name);
+        if let Some(branch_name) = &branch {
+            args.push(branch_name);
+        }
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to pull: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+async fn git_fetch(path: String, remote: Option<String>) -> Result<String, String> {
+    let mut args = vec!["fetch"];
+    
+    if let Some(remote_name) = &remote {
+        args.push(remote_name);
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to fetch: {}", e))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -2312,7 +2396,10 @@ fn main() {
             git_commit,
             git_init,
             git_diff,
-            git_is_repository
+            git_is_repository,
+            git_push,
+            git_pull,
+            git_fetch
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
