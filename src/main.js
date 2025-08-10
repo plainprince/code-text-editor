@@ -1592,3 +1592,9 @@ function initDraggablePanes() {
     });
   }, 100);
 }
+
+// Expose tab functions to global scope for file-explorer.js
+window.openTabs = openTabs;
+window.updateTabs = updateTabs;
+window.closeTab = closeTab;
+window.switchToTab = switchToTab;

@@ -1170,19 +1170,21 @@ fn extract_tree_sitter_symbols(node: Node, source_code: &str, symbols: &mut Vec<
     let mut cursor = node.walk();
     
     for child in node.children(&mut cursor) {
-        match language_id {
+        let processed = match language_id {
             "python" => extract_python_node(child, source_code, symbols),
             "rust" => extract_rust_node(child, source_code, symbols),
             "go" => extract_go_node(child, source_code, symbols),
             _ => extract_generic_node(child, source_code, symbols),
-        }
+        };
         
-        // Recurse into children
-        extract_tree_sitter_symbols(child, source_code, symbols, language_id);
+        // Only recurse if the node wasn't processed as a symbol (to avoid double-processing)
+        if !processed {
+            extract_tree_sitter_symbols(child, source_code, symbols, language_id);
+        }
     }
 }
 
-fn extract_python_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_python_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) -> bool {
     match node.kind() {
         "function_definition" => {
             if let Some(name_node) = node.child_by_field_name("name") {
@@ -1202,6 +1204,7 @@ fn extract_python_node(node: Node, source_code: &str, symbols: &mut Vec<Document
                     selection_range: range,
                     children,
                 });
+                return true;
             }
         },
         "class_definition" => {
@@ -1222,10 +1225,11 @@ fn extract_python_node(node: Node, source_code: &str, symbols: &mut Vec<Document
                     selection_range: range,
                     children,
                 });
+                return true;
             }
         },
         "call" => {
-            // Extract function calls like print()
+            // Extract function calls like print() but only within functions/classes
             if let Some(function_node) = node.child_by_field_name("function") {
                 let function_name = function_node.utf8_text(source_code.as_bytes()).unwrap_or("call");
                 if function_name == "print" || function_name.contains('.') {
@@ -1236,14 +1240,16 @@ fn extract_python_node(node: Node, source_code: &str, symbols: &mut Vec<Document
                         selection_range: node_to_range(function_node),
                         children: Vec::new(),
                     });
+                    return true;
                 }
             }
         },
         _ => {}
     }
+    false
 }
 
-fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) -> bool {
     match node.kind() {
         "function_item" => {
             if let Some(name_node) = node.child_by_field_name("name") {
@@ -1263,6 +1269,7 @@ fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSy
                     selection_range: range,
                     children,
                 });
+                return true;
             }
         },
         "struct_item" | "enum_item" | "impl_item" => {
@@ -1283,6 +1290,7 @@ fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSy
                     selection_range: range,
                     children,
                 });
+                return true;
             }
         },
         "let_declaration" => {
@@ -1297,6 +1305,7 @@ fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSy
                             selection_range: node_to_range(name_node),
                             children: Vec::new(),
                         });
+                        return true;
                     }
                 }
             }
@@ -1313,6 +1322,7 @@ fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSy
                         selection_range: node_to_range(macro_node),
                         children: Vec::new(),
                     });
+                    return true;
                 }
             }
         },
@@ -1327,13 +1337,15 @@ fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSy
                     selection_range: node_to_range(function_node),
                     children: Vec::new(),
                 });
+                return true;
             }
         },
         _ => {}
     }
+    false
 }
 
-fn extract_go_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_go_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) -> bool {
     match node.kind() {
         "function_declaration" | "method_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
@@ -1353,6 +1365,7 @@ fn extract_go_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymb
                     selection_range: range,
                     children,
                 });
+                return true;
             }
         },
         "type_declaration" => {
@@ -1365,6 +1378,7 @@ fn extract_go_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymb
                     selection_range: node_to_range(name_node),
                     children: Vec::new(),
                 });
+                return true;
             }
         },
         "var_declaration" | "const_declaration" => {
@@ -1384,6 +1398,7 @@ fn extract_go_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymb
                     }
                 }
             }
+            return true;
         },
         "call_expression" => {
             if let Some(function_node) = node.child_by_field_name("function") {
@@ -1396,14 +1411,16 @@ fn extract_go_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymb
                         selection_range: node_to_range(function_node),
                         children: Vec::new(),
                     });
+                    return true;
                 }
             }
         },
         _ => {}
     }
+    false
 }
 
-fn extract_generic_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+fn extract_generic_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) -> bool {
     let kind = node.kind();
     
     // Generic function detection
@@ -1416,6 +1433,7 @@ fn extract_generic_node(node: Node, source_code: &str, symbols: &mut Vec<Documen
                 selection_range: node_to_range(node),
                 children: Vec::new(),
             });
+            return true;
         }
     }
     // Generic class detection
@@ -1428,8 +1446,10 @@ fn extract_generic_node(node: Node, source_code: &str, symbols: &mut Vec<Documen
                 selection_range: node_to_range(node),
                 children: Vec::new(),
             });
+            return true;
         }
     }
+    false
 }
 
 fn extract_name_from_node(node: Node, source_code: &str) -> Option<String> {
