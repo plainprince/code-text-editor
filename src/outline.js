@@ -113,20 +113,49 @@ class OutlinePanel {
     const queries = []; // No longer using keyword queries - Tree-sitter handles everything
 
         try {
-      // Debug Tauri availability
-      console.log('Checking Tauri availability:');
-      console.log('window.__TAURI__:', typeof window.__TAURI__);
-      console.log('window.__TAURI__.core:', typeof window.__TAURI__?.core);
+      // Debug Tauri availability - enhanced logging for release builds
+      console.log('[OUTLINE] Checking Tauri availability:');
+      console.log('[OUTLINE] window.__TAURI__:', typeof window.__TAURI__);
+      console.log('[OUTLINE] window.__TAURI__.core:', typeof window.__TAURI__?.core);
+      console.log('[OUTLINE] window.__TAURI__.core.invoke:', typeof window.__TAURI__?.core?.invoke);
+      
+      // Check for common issues
+      if (typeof window === 'undefined') {
+        console.error('[OUTLINE] ❌ window object not available');
+        this.clearOutline();
+        return;
+      }
+      
+      if (!window.__TAURI__) {
+        console.error('[OUTLINE] ❌ __TAURI__ not available - might be a build issue');
+        console.log('[OUTLINE] Available window properties:', Object.keys(window).filter(k => k.includes('TAURI') || k.includes('tauri')));
+        this.showError('Tauri runtime not available. Check build configuration.');
+        return;
+      }
+      
+      if (!window.__TAURI__.core) {
+        console.error('[OUTLINE] ❌ __TAURI__.core not available');
+        console.log('[OUTLINE] Available __TAURI__ properties:', Object.keys(window.__TAURI__));
+        this.showError('Tauri core not available. Build might be incomplete.');
+        return;
+      }
+      
+      if (!window.__TAURI__.core.invoke) {
+        console.error('[OUTLINE] ❌ __TAURI__.core.invoke not available');
+        console.log('[OUTLINE] Available core properties:', Object.keys(window.__TAURI__.core));
+        this.showError('Tauri invoke function not available.');
+        return;
+      }
       
       // Try Rust backend for Tree-sitter parsing first
       if (window.__TAURI__ && window.__TAURI__.core) {
-        console.log('✅ Tauri available - calling Tree-sitter');
-        console.log('Calling Tree-sitter with:', { 
+        console.log('[OUTLINE] ✅ Tauri available - calling Tree-sitter');
+        console.log('[OUTLINE] Calling Tree-sitter with:', { 
           sourceCode: sourceCode.length + ' chars', 
           languageId, 
           fileName 
         });
-        console.log('Source code preview:', sourceCode.substring(0, 200) + '...');
+        console.log('[OUTLINE] Source code preview:', sourceCode.substring(0, 200) + '...');
         
         const symbols = await window.__TAURI__.core.invoke('parse_document_symbols', {
           source_code: sourceCode,
@@ -135,18 +164,43 @@ class OutlinePanel {
           queries: queries
         });
 
-        console.log(`✅ Tree-sitter parsed ${symbols.length} symbols for ${languageId}`);
-        console.log('Tree-sitter symbols:', symbols);
+        console.log(`[OUTLINE] ✅ Tree-sitter parsed ${symbols.length} symbols for ${languageId}`);
+        console.log('[OUTLINE] Tree-sitter symbols:', symbols);
         this.symbols = symbols;
         this.renderOutline();
         return;
       } else {
-        console.log('❌ Tauri not available. Outline will not be populated.');
+        console.log('[OUTLINE] ❌ Tauri not available. Outline will not be populated.');
         this.clearOutline();
       }
     } catch (error) {
-      console.error('❌ Tree-sitter parsing failed:', error);
-      this.clearOutline();
+      console.error('[OUTLINE] ❌ Tree-sitter parsing failed:', error);
+      console.error('[OUTLINE] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      // Show user-friendly error message in the outline panel
+      let errorMessage = 'Failed to parse symbols';
+      
+      // Additional debug information
+      if (error.message) {
+        console.error('[OUTLINE] Error message analysis:', error.message);
+        if (error.message.includes('not found') || error.message.includes('undefined')) {
+          console.error('[OUTLINE] This might be a missing command registration issue');
+          errorMessage = 'Command registration issue. Tree-sitter not available.';
+        } else if (error.message.includes('failed to parse') || error.message.includes('tree-sitter')) {
+          console.error('[OUTLINE] This might be a tree-sitter library issue');
+          errorMessage = 'Tree-sitter library error. Language not supported.';
+        } else if (error.message.includes('unsupported language')) {
+          errorMessage = `Language "${languageId}" not supported.`;
+        } else {
+          errorMessage = `Parse error: ${error.message}`;
+        }
+      }
+      
+      this.showError(errorMessage);
     }
   }
 
@@ -293,6 +347,12 @@ class OutlinePanel {
   clearOutline() {
     this.symbols = [];
     this.container.innerHTML = '<div class="empty-message">No symbols found</div>';
+  }
+
+  // Show error message in outline panel (for release builds where console is not accessible)
+  showError(message) {
+    this.symbols = [];
+    this.container.innerHTML = `<div class="error-message" style="color: #ff6b6b; padding: 8px; font-size: 12px;">${message}</div>`;
   }
 
   // Render the outline tree

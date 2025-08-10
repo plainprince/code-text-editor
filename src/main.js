@@ -4,6 +4,7 @@
 import FileExplorer from './file-explorer.js';
 import CodeMirrorEditor from './codemirror-editor.js';
 import { TerminalManager } from './terminal.js';
+import TabManager from './tab-manager.js';
 
 import DraggablePanes from './draggable-panes.js';
 import { getWorkspaceFiles, searchInFiles, fileExists, writeFile as fsWriteFile, readFile as fsReadFile } from './file-system.js';
@@ -35,11 +36,12 @@ window.addEventListener('blur', async () => {
 let currentLeftPanel = "project-panel";
 let currentRightPanel = null;
 let currentBottomPanel = null;
-let openTabs = new Set(); // Simple set of file paths
+let openTabs = new Set(); // Simple set of file paths (legacy - will be replaced by tabManager)
 let currentFilePath = null;
 let fileExplorer = null;
 let editorInstance = null;
 let outlinePanel = null;
+let tabManager = null;
 
 let terminalInstance = null;
 let draggablePanes = null;
@@ -78,8 +80,14 @@ window.tauri = window.__TAURI__;
 let availableCommands = [
   { id: 'open-settings', name: 'Open Settings', action: () => openSettings() },
   { id: 'open-project', name: 'Open Project', action: () => document.getElementById("open-project-button").click() },
-  { id: 'toggle-terminal', name: 'Toggle Terminal', action: () => toggleTerminal() },
+  { id: 'toggle-terminal', name: 'Toggle Terminal', action: () => setBottomPanel(currentBottomPanel === 'terminal' ? null : 'terminal') },
   { id: 'search-files', name: 'Search in Files', action: () => openSearch() },
+  { id: 'close-tab', name: 'Close Tab', action: () => tabManager?.closeTab(tabManager.activeTabId) },
+  { id: 'close-other-tabs', name: 'Close Other Tabs', action: () => tabManager?.closeOtherTabs() },
+  { id: 'close-all-tabs', name: 'Close All Tabs', action: () => tabManager?.closeAllTabs() },
+  { id: 'next-tab', name: 'Next Tab', action: () => tabManager?.navigateTab('next') },
+  { id: 'previous-tab', name: 'Previous Tab', action: () => tabManager?.navigateTab('prev') },
+  { id: 'save-file', name: 'Save File', action: () => saveCurrentFile() },
 
 ];
 
@@ -95,6 +103,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   await loadSettings();
   // Apply initial theme
   applyTheme(window.settings.theme || 'dark');
+  
+  // Initialize tab manager
+  initTabManager();
   
   // Initialize file explorer first
   initFileExplorer();
@@ -452,52 +463,105 @@ function updateEditor(filePath, content, fileName) {
   }
 }
 
-// Update tabs function
-function updateTabs() {
-  const tabsContainer = document.getElementById("editor-tabs-tabs-section");
-  tabsContainer.innerHTML = '';
+// Initialize tab manager
+function initTabManager() {
+  tabManager = new TabManager();
   
-  openTabs.forEach(filePath => {
-    const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'untitled';
-    
-    const tab = document.createElement('div');
-    tab.className = 'editor-tab';
-    tab.setAttribute('data-filepath', filePath);
-    
-    if (filePath === currentFilePath) {
-      tab.classList.add('active');
+  // Expose globally
+  window.tabManager = tabManager;
+  
+  // Set up event listeners for tab manager integration
+  document.addEventListener('tab-switched', (e) => {
+    const { newTab } = e.detail;
+    if (newTab) {
+      currentFilePath = newTab.filePath;
+      window.currentFilePath = newTab.filePath;
+      
+      // Update editor content
+      updateEditor(newTab.filePath, newTab.content, newTab.fileName);
+      
+      // Update filename in toolbar
+      document.getElementById("editor-filename").textContent = newTab.fileName;
+      
+      // Connect editor to tab manager if not already connected
+      setTimeout(() => {
+        connectEditorToTabManager();
+      }, 100);
+      
+      // Dispatch event for other components (but avoid infinite loops)
+      if (!e.detail.internal) {
+        document.dispatchEvent(new CustomEvent('tab-switched', {
+          detail: { 
+            filePath: newTab.filePath,
+            internal: true
+          }
+        }));
+      }
     }
+  });
+  
+  document.addEventListener('tab-created', (e) => {
+    // Ensure tabs are visible when a tab is created
+    const editorTabs = document.getElementById("editor-tabs");
+    if (editorTabs) {
+      editorTabs.style.display = 'flex';
+    }
+  });
+  
+  document.addEventListener('tab-closed', (e) => {
+    const { tab } = e.detail;
     
-    const icon = document.createElement('span');
-    icon.className = 'tab-icon';
-    icon.innerHTML = fileExplorer.getFileIcon(fileName);
+    // Remove from legacy openTabs set
+    openTabs.delete(tab.filePath);
     
-    const name = document.createElement('span');
-    name.className = 'tab-name';
-    name.textContent = fileName;
-    
-    const close = document.createElement('span');
-    close.className = 'tab-close';
-    close.textContent = '×';
-    close.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeTab(filePath);
-    });
-    
-    tab.appendChild(icon);
-    tab.appendChild(name);
-    tab.appendChild(close);
-    
-    tab.addEventListener('click', () => {
-      switchToTab(filePath);
-    });
-    
-    tabsContainer.appendChild(tab);
+    // If no tabs left, show welcome screen
+    if (tabManager.getAllTabs().length === 0) {
+      currentFilePath = null;
+      window.currentFilePath = null;
+      
+      if (editorInstance) {
+        editorInstance.destroy();
+        editorInstance = null;
+      }
+      
+      // Clear outline panel
+      if (outlinePanel) {
+        outlinePanel.setEditor(null);
+      }
+      
+      const welcomeScreen = document.getElementById("welcome-screen");
+      if (welcomeScreen) {
+        welcomeScreen.style.display = 'flex';
+      }
+      
+      document.getElementById("editor-filename").textContent = '';
+    }
+  });
+  
+  // Listen for editor content changes to mark tabs dirty
+  document.addEventListener('editor-content-changed', (e) => {
+    const activeTab = tabManager.getActiveTab();
+    if (activeTab && e.detail.content !== undefined) {
+      tabManager.updateTabContent(activeTab.id, e.detail.content);
+    }
   });
 }
 
-// Switch to a tab (load file fresh)
+// Legacy update tabs function (for backward compatibility)
+function updateTabs() {
+  // This function is now handled by the TabManager
+  if (tabManager) {
+    tabManager.renderTabs();
+  }
+}
+
+// Switch to a tab (load file fresh) - legacy function, now uses TabManager
 async function switchToTab(filePath) {
+  if (tabManager) {
+    return tabManager.switchToTabByPath(filePath);
+  }
+  
+  // Fallback to old implementation
   try {
     // Autosave current file before switching (if we have an open file and editor content)
     if (currentFilePath && currentFilePath !== 'settings' && editorInstance && editorInstance.content) {
@@ -550,8 +614,13 @@ async function switchToTab(filePath) {
   }
 }
 
-// Close tab function
+// Close tab function - legacy function, now uses TabManager
 function closeTab(filePath) {
+  if (tabManager) {
+    return tabManager.closeTabByPath(filePath);
+  }
+  
+  // Fallback to old implementation
   openTabs.delete(filePath);
   
   // If we're closing the current tab, switch to another or show welcome
@@ -596,6 +665,14 @@ async function saveCurrentFile() {
     if (editorInstance) {
       const content = editorInstance.getContent();
       
+      // Mark tab as clean after successful save
+      if (tabManager) {
+        const activeTab = tabManager.getActiveTab();
+        if (activeTab) {
+          tabManager.updateTabContent(activeTab.id, content);
+        }
+      }
+      
       // Special handling for settings file
       if (currentFilePath === 'settings') {
         try {
@@ -607,6 +684,14 @@ async function saveCurrentFile() {
           
           // Save to the store
           await saveSettings();
+          
+          // Mark tab as clean
+          if (tabManager) {
+            const activeTab = tabManager.getActiveTab();
+            if (activeTab) {
+              tabManager.markTabDirty(activeTab.id, false);
+            }
+          }
           
           // Settings saved silently
           return;
@@ -623,6 +708,15 @@ async function saveCurrentFile() {
         file_path: currentFilePath, 
         content 
       });
+        
+        // Mark tab as clean after successful save
+        if (tabManager) {
+          const activeTab = tabManager.getActiveTab();
+          if (activeTab) {
+            tabManager.markTabDirty(activeTab.id, false);
+          }
+        }
+        
         // File saved silently - no notification needed
       } catch (saveErr) {
         console.error("Failed to save file:", saveErr);
@@ -695,14 +789,25 @@ async function openSettings() {
     // Create JSON representation of current settings
     const content = JSON.stringify(window.settings, null, 2);
     
-    // Add settings tab
-    openTabs.add('settings');
-    currentFilePath = 'settings';
-    
-    // Update UI
-    updateTabs();
-    updateEditor('settings', content, 'settings.json');
-    document.getElementById("editor-filename").textContent = 'settings.json';
+    if (tabManager) {
+      // Check if settings tab already exists
+      const existingTab = tabManager.getTabByPath('settings');
+      if (existingTab) {
+        // Update content and switch to tab
+        tabManager.updateTabContent(existingTab.id, content);
+        tabManager.switchToTab(existingTab.id);
+      } else {
+        // Create new settings tab
+        tabManager.createTab('settings', 'settings.json', content);
+      }
+    } else {
+      // Fallback to legacy system
+      openTabs.add('settings');
+      currentFilePath = 'settings';
+      updateTabs();
+      updateEditor('settings', content, 'settings.json');
+      document.getElementById("editor-filename").textContent = 'settings.json';
+    }
   } catch (err) {
     console.error("Failed to open settings:", err);
   }
@@ -1216,22 +1321,41 @@ function initFileExplorer() {
   document.addEventListener('file-opened', (e) => {
     const { path, name, content } = e.detail;
     
-    // Add to open tabs
-    openTabs.add(path);
-    
-    // Set as current file
-    currentFilePath = path;
-    window.currentFilePath = path;
+    // Validate parameters
+    if (!path || !name) {
+      console.error('Invalid file opened event - missing path or name:', e.detail);
+      return;
+    }
     
     // Validate content before passing to editor
     const validContent = content != null ? String(content) : '';
     
-    // Update UI
-    updateTabs();
-    updateEditor(path, validContent, name);
-    
-    // Update filename in toolbar
-    document.getElementById("editor-filename").textContent = name;
+    // Use TabManager if available
+    if (tabManager) {
+      // Check if tab already exists
+      const existingTab = tabManager.getTabByPath(path);
+      if (existingTab) {
+        // Just switch to existing tab
+        tabManager.switchToTab(existingTab.id);
+      } else {
+        // Create new tab
+        tabManager.createTab(path, name, validContent);
+      }
+      
+      // Ensure tab bar is visible
+      const editorTabs = document.getElementById("editor-tabs");
+      if (editorTabs) {
+        editorTabs.style.display = 'flex';
+      }
+    } else {
+      // Fallback to legacy system
+      openTabs.add(path);
+      currentFilePath = path;
+      window.currentFilePath = path;
+      updateTabs();
+      updateEditor(path, validContent, name);
+      document.getElementById("editor-filename").textContent = name;
+    }
   });
   
   // Set up event listener for no file selected
@@ -1598,3 +1722,44 @@ window.openTabs = openTabs;
 window.updateTabs = updateTabs;
 window.closeTab = closeTab;
 window.switchToTab = switchToTab;
+window.tabManager = null; // Will be set after initialization
+
+// Function to connect editor content changes to tab dirty state
+function connectEditorToTabManager() {
+  if (editorInstance && tabManager) {
+    // Listen for content changes in the editor
+    const originalSetContent = editorInstance.setContent;
+    const originalGetContent = editorInstance.getContent;
+    
+    let lastContent = '';
+    
+    // Override setContent to track initial content
+    editorInstance.setContent = function(content) {
+      lastContent = content || '';
+      return originalSetContent.call(this, content);
+    };
+    
+    // Listen for changes and mark tab as dirty
+    const checkForChanges = () => {
+      if (editorInstance && editorInstance.getContent) {
+        const currentContent = editorInstance.getContent();
+        const activeTab = tabManager.getActiveTab();
+        
+        if (activeTab && currentContent !== lastContent) {
+          if (currentContent !== activeTab.content) {
+            tabManager.markTabDirty(activeTab.id, true);
+          } else {
+            tabManager.markTabDirty(activeTab.id, false);
+          }
+          lastContent = currentContent;
+        }
+      }
+    };
+    
+    // Check for changes periodically
+    setInterval(checkForChanges, 1000);
+    
+    // Also check on focus loss
+    window.addEventListener('blur', checkForChanges);
+  }
+}

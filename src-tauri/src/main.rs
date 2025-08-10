@@ -51,15 +51,45 @@ type LanguageServerMap = Arc<Mutex<HashMap<String, Child>>>;
 
 // Tree-sitter language functions
 fn get_language(language_id: &str) -> Result<Language, String> {
-    match language_id {
-        "javascript" | "jsx" => Ok(tree_sitter_javascript::LANGUAGE.into()),
-        "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
-        "tsx" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
-        "python" => Ok(tree_sitter_python::LANGUAGE.into()),
-        "rust" => Ok(tree_sitter_rust::LANGUAGE.into()),
-        "go" => Ok(tree_sitter_go::LANGUAGE.into()),
-        _ => Err(format!("Unsupported language: {}", language_id)),
+    eprintln!("[OUTLINE DEBUG] Attempting to load language: {}", language_id);
+    
+    let result = match language_id {
+        "javascript" | "jsx" => {
+            eprintln!("[OUTLINE DEBUG] Loading JavaScript language");
+            Ok(tree_sitter_javascript::LANGUAGE.into())
+        },
+        "typescript" => {
+            eprintln!("[OUTLINE DEBUG] Loading TypeScript language");
+            Ok(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+        },
+        "tsx" => {
+            eprintln!("[OUTLINE DEBUG] Loading TSX language");
+            Ok(tree_sitter_typescript::LANGUAGE_TSX.into())
+        },
+        "python" => {
+            eprintln!("[OUTLINE DEBUG] Loading Python language");
+            Ok(tree_sitter_python::LANGUAGE.into())
+        },
+        "rust" => {
+            eprintln!("[OUTLINE DEBUG] Loading Rust language");
+            Ok(tree_sitter_rust::LANGUAGE.into())
+        },
+        "go" => {
+            eprintln!("[OUTLINE DEBUG] Loading Go language");
+            Ok(tree_sitter_go::LANGUAGE.into())
+        },
+        _ => {
+            eprintln!("[OUTLINE DEBUG] Unsupported language: {}", language_id);
+            Err(format!("Unsupported language: {}", language_id))
+        },
+    };
+    
+    match &result {
+        Ok(_) => eprintln!("[OUTLINE DEBUG] Successfully loaded language: {}", language_id),
+        Err(e) => eprintln!("[OUTLINE DEBUG] Failed to load language {}: {}", language_id, e),
     }
+    
+    result
 }
 
 // Symbol information structure
@@ -534,7 +564,7 @@ struct ClipboardItem {
 
 type ClipboardState = Arc<Mutex<Option<ClipboardItem>>>;
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 async fn create_terminal_session(
     session_id: String,
     working_directory: Option<String>,
@@ -881,16 +911,55 @@ fn parse_document_symbols(
     _file_path: String,
     queries: Vec<SymbolQuery>,
 ) -> Result<Vec<DocumentSymbol>, String> {
-    let language = get_language(&language_id)?;
+    // Debug logging for release builds
+    eprintln!("[OUTLINE DEBUG] Starting parse_document_symbols");
+    eprintln!("[OUTLINE DEBUG] Language: {}", language_id);
+    eprintln!("[OUTLINE DEBUG] Source code length: {}", source_code.len());
+    eprintln!("[OUTLINE DEBUG] Queries count: {}", queries.len());
+
+    let language = match get_language(&language_id) {
+        Ok(lang) => {
+            eprintln!("[OUTLINE DEBUG] Successfully got language for: {}", language_id);
+            lang
+        },
+        Err(e) => {
+            eprintln!("[OUTLINE DEBUG] Failed to get language for {}: {}", language_id, e);
+            return Err(e);
+        }
+    };
 
     let mut parser = Parser::new();
-    parser.set_language(&language)
-        .map_err(|e| format!("Failed to set language: {}", e))?;
+    match parser.set_language(&language) {
+        Ok(_) => {
+            eprintln!("[OUTLINE DEBUG] Successfully set parser language");
+        },
+        Err(e) => {
+            eprintln!("[OUTLINE DEBUG] Failed to set parser language: {}", e);
+            return Err(format!("Failed to set language: {}", e));
+        }
+    }
 
-    let tree = parser.parse(&source_code, None)
-        .ok_or("Failed to parse source code")?;
+    let tree = match parser.parse(&source_code, None) {
+        Some(tree) => {
+            eprintln!("[OUTLINE DEBUG] Successfully parsed source code");
+            eprintln!("[OUTLINE DEBUG] Tree root kind: {}", tree.root_node().kind());
+            eprintln!("[OUTLINE DEBUG] Tree has {} children", tree.root_node().child_count());
+            tree
+        },
+        None => {
+            eprintln!("[OUTLINE DEBUG] Failed to parse source code");
+            return Err("Failed to parse source code".to_string());
+        }
+    };
 
     let symbols = extract_symbols_from_tree(&tree, &source_code, &language_id, &queries);
+    eprintln!("[OUTLINE DEBUG] Extracted {} symbols", symbols.len());
+    
+    // Log each symbol for debugging
+    for (i, symbol) in symbols.iter().enumerate() {
+        eprintln!("[OUTLINE DEBUG] Symbol {}: {} ({})", i, symbol.name, symbol.kind);
+    }
+    
     Ok(symbols)
 }
 
@@ -898,25 +967,35 @@ fn extract_symbols_from_tree(tree: &Tree, source_code: &str, language_id: &str, 
     let root_node = tree.root_node();
     let mut symbols = Vec::new();
     
+    eprintln!("[OUTLINE DEBUG] Extracting symbols for language: {}", language_id);
+    eprintln!("[OUTLINE DEBUG] Root node kind: {}", root_node.kind());
+    eprintln!("[OUTLINE DEBUG] Root node child count: {}", root_node.child_count());
+    
     match language_id {
         "javascript" | "jsx" | "typescript" | "tsx" => {
+            eprintln!("[OUTLINE DEBUG] Using JS symbol extraction");
             // Use only the hierarchical Tree-sitter approach for JS (it was working well)
             extract_js_symbols(root_node, source_code, &mut symbols, queries);
         },
         "python" => {
+            eprintln!("[OUTLINE DEBUG] Using Python symbol extraction");
             extract_tree_sitter_symbols(root_node, source_code, &mut symbols, language_id);
         },
         "rust" => {
+            eprintln!("[OUTLINE DEBUG] Using Rust symbol extraction");
             extract_tree_sitter_symbols(root_node, source_code, &mut symbols, language_id);
         },
         "go" => {
+            eprintln!("[OUTLINE DEBUG] Using Go symbol extraction");
             extract_tree_sitter_symbols(root_node, source_code, &mut symbols, language_id);
         },
         _ => {
+            eprintln!("[OUTLINE DEBUG] Using generic symbol extraction for: {}", language_id);
             extract_tree_sitter_symbols(root_node, source_code, &mut symbols, "generic");
         }
     }
     
+    eprintln!("[OUTLINE DEBUG] Finished extracting, found {} symbols", symbols.len());
     symbols
 }
 
@@ -1079,7 +1158,21 @@ fn create_control_flow_symbol(node: Node, source_code: &str, queries: &Vec<Symbo
         },
         "if_statement" => {
             if let Some(condition) = node.child_by_field_name("condition") {
-                format!("if ({})", condition.utf8_text(source_code.as_bytes()).unwrap_or(""))
+                let condition_text = condition.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                eprintln!("[OUTLINE DEBUG] JavaScript if condition raw text: '{}'", condition_text);
+                // Clean up the condition text - remove extra parentheses if they exist
+                let clean_condition = condition_text
+                    .trim_matches(|c| c == '(' || c == ')' || c == ' ')
+                    .trim()
+                    .chars()
+                    .take(50) // Limit to 50 characters for readability
+                    .collect::<String>();
+                eprintln!("[OUTLINE DEBUG] JavaScript if condition cleaned: '{}'", clean_condition);
+                if clean_condition.is_empty() {
+                    "if".to_string()
+                } else {
+                    format!("if ({})", clean_condition)
+                }
             } else {
                 "if statement".to_string()
             }
@@ -1103,7 +1196,7 @@ fn create_control_flow_symbol(node: Node, source_code: &str, queries: &Vec<Symbo
     
     Some(DocumentSymbol {
         name,
-        kind: "struct".to_string(),
+        kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
         range: range.clone(),
         selection_range: range,
         children,
@@ -1228,6 +1321,142 @@ fn extract_python_node(node: Node, source_code: &str, symbols: &mut Vec<Document
                 return true;
             }
         },
+        "assignment" => {
+            // Handle variable assignments like x = 5, y = func(), etc.
+            if let Some(left) = node.child_by_field_name("left") {
+                // Handle simple identifier assignments
+                if left.kind() == "identifier" {
+                    let name = left.utf8_text(source_code.as_bytes()).unwrap_or("variable").to_string();
+                    let range = node_to_range(node);
+                    let selection_range = node_to_range(left);
+                    
+                    // Check if the right side is a function call to determine variable vs function
+                    let mut kind = "variable".to_string();
+                    if let Some(right) = node.child_by_field_name("right") {
+                        if right.kind() == "call" || right.kind() == "lambda" {
+                            kind = "function".to_string();
+                        }
+                    }
+                    
+                    symbols.push(DocumentSymbol {
+                        name,
+                        kind,
+                        range,
+                        selection_range,
+                        children: Vec::new(),
+                    });
+                    return true;
+                }
+                // Handle attribute assignments like self.x = 5
+                else if left.kind() == "attribute" {
+                    if let Some(attr_node) = left.child_by_field_name("attribute") {
+                        let name = format!("self.{}", attr_node.utf8_text(source_code.as_bytes()).unwrap_or("attribute"));
+                        let range = node_to_range(node);
+                        let selection_range = node_to_range(attr_node);
+                        
+                        symbols.push(DocumentSymbol {
+                            name,
+                            kind: "property".to_string(),
+                            range,
+                            selection_range,
+                            children: Vec::new(),
+                        });
+                        return true;
+                    }
+                }
+            }
+        },
+        "if_statement" => {
+            // Handle if statements in Python
+            if let Some(condition) = node.child_by_field_name("condition") {
+                let condition_text = condition.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                eprintln!("[OUTLINE DEBUG] Python if condition raw text: '{}'", condition_text);
+                // Clean up the condition text and limit length for readability
+                let clean_condition = condition_text
+                    .trim_matches(|c| c == '(' || c == ')' || c == '+' || c == ' ')
+                    .trim()
+                    .chars()
+                    .take(50) // Limit to 50 characters for readability
+                    .collect::<String>();
+                eprintln!("[OUTLINE DEBUG] Python if condition cleaned: '{}'", clean_condition);
+                let name = if clean_condition.is_empty() {
+                    "if".to_string()
+                } else {
+                    format!("if {}", clean_condition)
+                };
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract statements from if body
+                if let Some(consequence) = node.child_by_field_name("consequence") {
+                    extract_tree_sitter_symbols(consequence, source_code, &mut children, "python");
+                }
+                
+                // Extract statements from else/elif branches
+                if let Some(alternative) = node.child_by_field_name("alternative") {
+                    extract_tree_sitter_symbols(alternative, source_code, &mut children, "python");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+                return true;
+            }
+        },
+        "for_statement" => {
+            // Handle for loops in Python
+            if let Some(left) = node.child_by_field_name("left") {
+                let left_text = left.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                if let Some(right) = node.child_by_field_name("right") {
+                    let right_text = right.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                    let name = format!("for {} in {}", left_text, right_text);
+                    let range = node_to_range(node);
+                    let mut children = Vec::new();
+                    
+                    // Extract loop body
+                    if let Some(body) = node.child_by_field_name("body") {
+                        extract_tree_sitter_symbols(body, source_code, &mut children, "python");
+                    }
+                    
+                    symbols.push(DocumentSymbol {
+                        name,
+                        kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
+                        range: range.clone(),
+                        selection_range: range,
+                        children,
+                    });
+                    return true;
+                }
+            }
+        },
+        "while_statement" => {
+            // Handle while loops in Python
+            if let Some(condition) = node.child_by_field_name("condition") {
+                let condition_text = condition.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                let clean_condition = condition_text.trim_matches(|c| c == '(' || c == ')' || c == '+' || c == ' ').trim();
+                let name = format!("while {}", clean_condition);
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract loop body
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "python");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+                return true;
+            }
+        },
         "call" => {
             // Extract function calls like print() but only within functions/classes
             if let Some(function_node) = node.child_by_field_name("function") {
@@ -1295,19 +1524,66 @@ fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSy
         },
         "let_declaration" => {
             if let Some(pattern) = node.child_by_field_name("pattern") {
-                if let Some(name_node) = pattern.child(0) {
-                    if name_node.kind() == "identifier" {
-                        let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("variable").to_string();
-                        symbols.push(DocumentSymbol {
-                            name,
-                            kind: "variable".to_string(),
-                            range: node_to_range(node),
-                            selection_range: node_to_range(name_node),
-                            children: Vec::new(),
-                        });
-                        return true;
+                // Handle simple identifier patterns
+                if pattern.kind() == "identifier" {
+                    let name = pattern.utf8_text(source_code.as_bytes()).unwrap_or("variable").to_string();
+                    symbols.push(DocumentSymbol {
+                        name,
+                        kind: "variable".to_string(),
+                        range: node_to_range(node),
+                        selection_range: node_to_range(pattern),
+                        children: Vec::new(),
+                    });
+                    return true;
+                }
+                // Handle tuple patterns like let (a, b) = ...
+                else if pattern.kind() == "tuple_pattern" {
+                    let mut cursor = pattern.walk();
+                    for child in pattern.children(&mut cursor) {
+                        if child.kind() == "identifier" {
+                            let name = child.utf8_text(source_code.as_bytes()).unwrap_or("variable").to_string();
+                            symbols.push(DocumentSymbol {
+                                name,
+                                kind: "variable".to_string(),
+                                range: node_to_range(node),
+                                selection_range: node_to_range(child),
+                                children: Vec::new(),
+                            });
+                        }
+                    }
+                    return true;
+                }
+                // Handle mutable patterns like let mut x = ...
+                else if pattern.kind() == "mut_pattern" {
+                    if let Some(inner_pattern) = pattern.child_by_field_name("pattern") {
+                        if inner_pattern.kind() == "identifier" {
+                            let name = format!("mut {}", inner_pattern.utf8_text(source_code.as_bytes()).unwrap_or("variable"));
+                            symbols.push(DocumentSymbol {
+                                name,
+                                kind: "variable".to_string(),
+                                range: node_to_range(node),
+                                selection_range: node_to_range(inner_pattern),
+                                children: Vec::new(),
+                            });
+                            return true;
+                        }
                     }
                 }
+            }
+        },
+        "const_item" | "static_item" => {
+            // Handle const and static declarations
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("constant").to_string();
+                let kind = if node.kind() == "const_item" { "constant" } else { "variable" };
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: kind.to_string(),
+                    range: node_to_range(node),
+                    selection_range: node_to_range(name_node),
+                    children: Vec::new(),
+                });
+                return true;
             }
         },
         "macro_invocation" => {
@@ -1324,6 +1600,141 @@ fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSy
                     });
                     return true;
                 }
+            }
+        },
+        "if_expression" => {
+            // Handle if expressions in Rust
+            if let Some(condition) = node.child_by_field_name("condition") {
+                let condition_text = condition.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                eprintln!("[OUTLINE DEBUG] Rust if condition raw text: '{}'", condition_text);
+                // Clean up the condition text and limit length for readability
+                let clean_condition = condition_text
+                    .trim_matches(|c| c == '(' || c == ')' || c == '+' || c == ' ')
+                    .trim()
+                    .chars()
+                    .take(50) // Limit to 50 characters for readability
+                    .collect::<String>();
+                eprintln!("[OUTLINE DEBUG] Rust if condition cleaned: '{}'", clean_condition);
+                let name = if clean_condition.is_empty() {
+                    "if".to_string()
+                } else {
+                    format!("if {}", clean_condition)
+                };
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract statements from if body
+                if let Some(consequence) = node.child_by_field_name("consequence") {
+                    extract_tree_sitter_symbols(consequence, source_code, &mut children, "rust");
+                }
+                
+                // Extract statements from else branch
+                if let Some(alternative) = node.child_by_field_name("alternative") {
+                    extract_tree_sitter_symbols(alternative, source_code, &mut children, "rust");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+                return true;
+            }
+        },
+        "for_expression" => {
+            // Handle for loops in Rust
+            if let Some(pattern) = node.child_by_field_name("pattern") {
+                let pattern_text = pattern.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                if let Some(value) = node.child_by_field_name("value") {
+                    let value_text = value.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                    let name = format!("for {} in {}", pattern_text, value_text);
+                    let range = node_to_range(node);
+                    let mut children = Vec::new();
+                    
+                    // Extract loop body
+                    if let Some(body) = node.child_by_field_name("body") {
+                        extract_tree_sitter_symbols(body, source_code, &mut children, "rust");
+                    }
+                    
+                    symbols.push(DocumentSymbol {
+                        name,
+                        kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
+                        range: range.clone(),
+                        selection_range: range,
+                        children,
+                    });
+                    return true;
+                }
+            }
+        },
+        "while_expression" => {
+            // Handle while loops in Rust
+            if let Some(condition) = node.child_by_field_name("condition") {
+                let condition_text = condition.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                let clean_condition = condition_text.trim_matches(|c| c == '(' || c == ')' || c == '+' || c == ' ').trim();
+                let name = format!("while {}", clean_condition);
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract loop body
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "rust");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+                return true;
+            }
+        },
+        "loop_expression" => {
+            // Handle infinite loops in Rust (loop {})
+            let name = "loop".to_string();
+            let range = node_to_range(node);
+            let mut children = Vec::new();
+            
+            // Extract loop body
+            if let Some(body) = node.child_by_field_name("body") {
+                extract_tree_sitter_symbols(body, source_code, &mut children, "rust");
+            }
+            
+            symbols.push(DocumentSymbol {
+                name,
+                kind: "operator".to_string(),
+                range: range.clone(),
+                selection_range: range,
+                children,
+            });
+            return true;
+        },
+        "match_expression" => {
+            // Handle match expressions in Rust
+            if let Some(value) = node.child_by_field_name("value") {
+                let value_text = value.utf8_text(source_code.as_bytes()).unwrap_or("").trim();
+                let clean_value = value_text.trim_matches(|c| c == '(' || c == ')' || c == '+' || c == ' ').trim();
+                let name = format!("match {}", clean_value);
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract match arms
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "rust");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "method".to_string(), // Use method icon for control flow (looks like a diamond/monitor)
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+                return true;
             }
         },
         "call_expression" => {
@@ -1624,7 +2035,25 @@ async fn send_lsp_notification(
     }
 }
 
+// Test tree-sitter languages at startup
+fn test_tree_sitter_languages() {
+    eprintln!("[OUTLINE DEBUG] Testing tree-sitter languages at startup...");
+    
+    let languages = vec!["javascript", "typescript", "python", "rust", "go"];
+    for lang in languages {
+        match get_language(lang) {
+            Ok(_) => eprintln!("[OUTLINE DEBUG] ✅ {} language loaded successfully", lang),
+            Err(e) => eprintln!("[OUTLINE DEBUG] ❌ {} language failed to load: {}", lang, e),
+        }
+    }
+    
+    eprintln!("[OUTLINE DEBUG] Tree-sitter language test completed");
+}
+
 fn main() {
+    // Test tree-sitter languages at startup for debugging
+    test_tree_sitter_languages();
+    
     let terminal_sessions: TerminalSessions = Arc::new(Mutex::new(HashMap::new()));
     let clipboard_state: ClipboardState = Arc::new(Mutex::new(None));
     let language_servers: LanguageServerMap = Arc::new(Mutex::new(HashMap::new()));

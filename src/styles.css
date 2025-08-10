@@ -213,14 +213,21 @@ body {
 
 /* Tabs */
 #editor-tabs {
-  display: flex;
+  display: none; /* Hidden by default, shown when tabs exist */
   overflow-x: auto;
   background-color: var(--panel-header-bg);
   border-bottom: 1px solid var(--border-color);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#editor-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 #editor-tabs-tabs-section {
   display: flex;
+  min-width: max-content;
 }
 
 .editor-tab {
@@ -231,6 +238,15 @@ body {
   border-right: 1px solid var(--border-color);
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  min-width: 100px;
+  max-width: 200px;
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.editor-tab:hover {
+  background-color: var(--button-hover-bg);
 }
 
 .editor-tab.active {
@@ -238,10 +254,26 @@ body {
   border-bottom: 2px solid var(--active-panel-color);
 }
 
+.editor-tab.dirty {
+  font-style: italic;
+}
+
+.editor-tab.temporary {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.editor-tab.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+  z-index: 1000;
+}
+
 .tab-icon {
   margin-right: 6px;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .tab-icon svg {
@@ -252,6 +284,11 @@ body {
 
 .tab-name {
   font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .tab-close {
@@ -263,11 +300,32 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 
 .tab-close:hover {
   background-color: var(--tab-close-hover);
   color: white;
+  opacity: 1;
+}
+
+.editor-tab:not(:hover) .tab-close {
+  opacity: 0.3;
+}
+
+/* Tab context menu */
+.tab-context-menu {
+  min-width: 180px;
+}
+
+/* Editor Container */
+#editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Editor */
@@ -275,6 +333,7 @@ body {
   flex: 1;
   position: relative;
   height: 100%;
+  overflow: hidden;
 }
 
 #editor-content {
