@@ -1727,12 +1727,18 @@ body {
   position: relative;
 }
 
-.git-commit-btn {
+.git-commit-compound-btn {
+  display: flex;
+  align-items: stretch;
+  border-radius: 4px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.git-commit-main-action {
   background: var(--accent-color);
   color: white;
-  border: none;
   padding: 6px 12px;
-  border-radius: 4px 0 0 4px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
@@ -1741,35 +1747,26 @@ body {
   gap: 6px;
 }
 
-.git-commit-btn:hover:not(:disabled) {
-  background: #3a7bc8;
-}
-
-.git-commit-btn:disabled {
-  background: var(--button-bg);
-  color: var(--text-color);
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.git-commit-dropdown {
-  position: relative;
-}
-
-.git-commit-dropdown-btn {
+.git-commit-dropdown-action {
   background: var(--accent-color);
   color: white;
-  border: none;
   border-left: 1px solid rgba(255, 255, 255, 0.2);
   padding: 6px 8px;
-  border-radius: 0 4px 4px 0;
   cursor: pointer;
-  font-size: 12px;
   display: flex;
   align-items: center;
 }
 
-.git-commit-dropdown-btn:hover {
+.git-commit-compound-btn[disabled] {
+  background: var(--button-bg);
+  color: var(--text-color);
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.git-commit-compound-btn:not([disabled]) .git-commit-main-action:hover,
+.git-commit-compound-btn:not([disabled]) .git-commit-dropdown-action:hover {
   background: #3a7bc8;
 }
 

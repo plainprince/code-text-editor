@@ -206,23 +206,23 @@ class GitPanel {
           >${this.commitMessage}</textarea>
           <div class="git-commit-actions">
             <div class="git-commit-btn-group">
-              <button 
-                class="btn btn-primary git-commit-btn" 
-                onclick="gitPanel.commit()"
+              <div 
+                class="btn btn-primary git-commit-compound-btn"
                 ${!this.commitMessage.trim() ? 'disabled' : ''}
               >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
-                </svg>
-                Commit
-              </button>
-              <div class="git-commit-dropdown">
-                <button class="btn btn-primary git-commit-dropdown-btn" onclick="gitPanel.toggleCommitDropdown(event)">
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                    <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06z"/>
-                  </svg>
-                </button>
-                <div class="git-commit-dropdown-menu" style="display: none;">
+                <div class="git-commit-main-action" onclick="gitPanel.commit()">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                      <path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
+                    </svg>
+                    Commit
+                </div>
+                <div class="git-commit-dropdown-action" onclick="gitPanel.toggleCommitDropdown(event)">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06z"/>
+                    </svg>
+                </div>
+              </div>
+              <div class="git-commit-dropdown-menu" style="display: none;">
                   <button class="git-commit-option" onclick="gitPanel.commit()">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                       <path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
@@ -241,7 +241,6 @@ class GitPanel {
                     </svg>
                     Commit (Amend)
                   </button>
-                </div>
               </div>
             </div>
           </div>
@@ -356,9 +355,13 @@ class GitPanel {
     this.commitMessage = event.target.value;
     
     // Enable/disable commit button
-    const commitBtn = document.querySelector('.git-commit-btn');
+    const commitBtn = document.querySelector('.git-commit-compound-btn');
     if (commitBtn) {
-      commitBtn.disabled = !this.commitMessage.trim();
+      if (this.commitMessage.trim()) {
+        commitBtn.removeAttribute('disabled');
+      } else {
+        commitBtn.setAttribute('disabled', 'true');
+      }
     }
   }
 
@@ -379,7 +382,7 @@ class GitPanel {
 
   toggleCommitDropdown(event) {
     event.stopPropagation();
-    const dropdown = event.target.closest('.git-commit-dropdown').querySelector('.git-commit-dropdown-menu');
+    const dropdown = event.target.closest('.git-commit-btn-group').querySelector('.git-commit-dropdown-menu');
     const isVisible = dropdown.style.display !== 'none';
     
     // Close all other dropdowns
@@ -394,7 +397,7 @@ class GitPanel {
     if (!isVisible) {
       setTimeout(() => {
         const closeDropdown = (e) => {
-          if (!e.target.closest('.git-commit-dropdown')) {
+          if (!e.target.closest('.git-commit-btn-group')) {
             dropdown.style.display = 'none';
             document.removeEventListener('click', closeDropdown);
           }
