@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use tree_sitter::{Language, Parser, Node, Tree};
-use regex::Regex;
 
 #[tauri::command(rename_all = "snake_case")]
 fn get_app_support_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
@@ -901,21 +900,20 @@ fn extract_symbols_from_tree(tree: &Tree, source_code: &str, language_id: &str, 
     
     match language_id {
         "javascript" | "jsx" | "typescript" | "tsx" => {
-            // Use both hierarchical parsing and keyword matching for JS
+            // Use only the hierarchical Tree-sitter approach for JS (it was working well)
             extract_js_symbols(root_node, source_code, &mut symbols, queries);
-            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
         },
         "python" => {
-            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
+            extract_tree_sitter_symbols(root_node, source_code, &mut symbols, language_id);
         },
         "rust" => {
-            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
+            extract_tree_sitter_symbols(root_node, source_code, &mut symbols, language_id);
         },
         "go" => {
-            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
+            extract_tree_sitter_symbols(root_node, source_code, &mut symbols, language_id);
         },
         _ => {
-            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
+            extract_tree_sitter_symbols(root_node, source_code, &mut symbols, "generic");
         }
     }
     
@@ -1165,92 +1163,291 @@ fn node_to_range(node: Node) -> Range {
     }
 }
 
-// Keyword-based symbol extraction with regex support
-fn extract_keyword_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
-    let text = node.utf8_text(source_code.as_bytes()).unwrap_or("");
-    let lines: Vec<&str> = text.lines().collect();
+// Note: Removed keyword-based extraction - using only Tree-sitter now for better hierarchy and accuracy
+
+// Improved Tree-sitter symbol extraction for all languages
+fn extract_tree_sitter_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, language_id: &str) {
+    let mut cursor = node.walk();
     
-    for (line_index, line) in lines.iter().enumerate() {
-        let trimmed_line = line.trim();
-        if trimmed_line.is_empty() || trimmed_line.starts_with("//") || trimmed_line.starts_with("#") {
-            continue;
+    for child in node.children(&mut cursor) {
+        match language_id {
+            "python" => extract_python_node(child, source_code, symbols),
+            "rust" => extract_rust_node(child, source_code, symbols),
+            "go" => extract_go_node(child, source_code, symbols),
+            _ => extract_generic_node(child, source_code, symbols),
         }
         
-        for query in queries {
-            let use_regex = query.use_regex.unwrap_or(false);
-            let matched = if use_regex {
-                // Use regex matching
-                match Regex::new(&query.keyword) {
-                    Ok(regex) => regex.is_match(trimmed_line),
-                    Err(_) => false, // Invalid regex, skip
+        // Recurse into children
+        extract_tree_sitter_symbols(child, source_code, symbols, language_id);
+    }
+}
+
+fn extract_python_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+    match node.kind() {
+        "function_definition" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("function").to_string();
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract function body
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "python");
                 }
-            } else {
-                // Use literal keyword matching
-                trimmed_line.contains(&query.keyword)
-            };
-            
-            if matched {
-                // Calculate position
-                let start_pos = node.start_position();
-                let line_number = start_pos.row + line_index;
-                
-                // Extract the relevant part for display
-                let display_name = if use_regex {
-                    // For regex matches, try to extract the matched part
-                    match Regex::new(&query.keyword) {
-                        Ok(regex) => {
-                            if let Some(mat) = regex.find(trimmed_line) {
-                                mat.as_str().to_string()
-                            } else {
-                                trimmed_line.to_string()
-                            }
-                        },
-                        Err(_) => trimmed_line.to_string(),
-                    }
-                } else {
-                    // For literal matches, extract around the keyword
-                    if let Some(pos) = trimmed_line.find(&query.keyword) {
-                        let start = pos.saturating_sub(10);
-                        let end = (pos + query.keyword.len() + 10).min(trimmed_line.len());
-                        trimmed_line[start..end].trim().to_string()
-                    } else {
-                        trimmed_line.to_string()
-                    }
-                };
-                
-                // Limit display name length
-                let final_name = if display_name.len() > 50 {
-                    format!("{}...", &display_name[..47])
-                } else {
-                    display_name
-                };
                 
                 symbols.push(DocumentSymbol {
-                    name: final_name,
-                    kind: query.kind.clone(),
-                    range: Range {
-                        start_line_number: line_number as u32 + 1,
-                        start_column: 1,
-                        end_line_number: line_number as u32 + 1,
-                        end_column: line.len() as u32 + 1,
-                    },
-                    selection_range: Range {
-                        start_line_number: line_number as u32 + 1,
-                        start_column: 1,
-                        end_line_number: line_number as u32 + 1,
-                        end_column: line.len() as u32 + 1,
-                    },
+                    name,
+                    kind: "function".to_string(),
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+            }
+        },
+        "class_definition" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("class").to_string();
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract class body
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "python");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "class".to_string(),
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+            }
+        },
+        "call" => {
+            // Extract function calls like print()
+            if let Some(function_node) = node.child_by_field_name("function") {
+                let function_name = function_node.utf8_text(source_code.as_bytes()).unwrap_or("call");
+                if function_name == "print" || function_name.contains('.') {
+                    symbols.push(DocumentSymbol {
+                        name: function_name.to_string(),
+                        kind: "function".to_string(),
+                        range: node_to_range(node),
+                        selection_range: node_to_range(function_node),
+                        children: Vec::new(),
+                    });
+                }
+            }
+        },
+        _ => {}
+    }
+}
+
+fn extract_rust_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+    match node.kind() {
+        "function_item" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("function").to_string();
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract function body
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "rust");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "function".to_string(),
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+            }
+        },
+        "struct_item" | "enum_item" | "impl_item" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("type").to_string();
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract body content
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "rust");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "class".to_string(),
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+            }
+        },
+        "let_declaration" => {
+            if let Some(pattern) = node.child_by_field_name("pattern") {
+                if let Some(name_node) = pattern.child(0) {
+                    if name_node.kind() == "identifier" {
+                        let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("variable").to_string();
+                        symbols.push(DocumentSymbol {
+                            name,
+                            kind: "variable".to_string(),
+                            range: node_to_range(node),
+                            selection_range: node_to_range(name_node),
+                            children: Vec::new(),
+                        });
+                    }
+                }
+            }
+        },
+        "macro_invocation" => {
+            // Handle println!, dbg!, etc.
+            if let Some(macro_node) = node.child_by_field_name("macro") {
+                let macro_name = macro_node.utf8_text(source_code.as_bytes()).unwrap_or("macro");
+                if macro_name.starts_with("println") || macro_name.starts_with("dbg") || macro_name.starts_with("print") {
+                    symbols.push(DocumentSymbol {
+                        name: macro_name.to_string(),
+                        kind: "function".to_string(),
+                        range: node_to_range(node),
+                        selection_range: node_to_range(macro_node),
+                        children: Vec::new(),
+                    });
+                }
+            }
+        },
+        "call_expression" => {
+            // Handle function calls
+            if let Some(function_node) = node.child_by_field_name("function") {
+                let function_text = function_node.utf8_text(source_code.as_bytes()).unwrap_or("call");
+                symbols.push(DocumentSymbol {
+                    name: function_text.to_string(),
+                    kind: "function".to_string(),
+                    range: node_to_range(node),
+                    selection_range: node_to_range(function_node),
                     children: Vec::new(),
                 });
-                
-                break; // Only match once per line
             }
+        },
+        _ => {}
+    }
+}
+
+fn extract_go_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+    match node.kind() {
+        "function_declaration" | "method_declaration" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("function").to_string();
+                let range = node_to_range(node);
+                let mut children = Vec::new();
+                
+                // Extract function body
+                if let Some(body) = node.child_by_field_name("body") {
+                    extract_tree_sitter_symbols(body, source_code, &mut children, "go");
+                }
+                
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "function".to_string(),
+                    range: range.clone(),
+                    selection_range: range,
+                    children,
+                });
+            }
+        },
+        "type_declaration" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("type").to_string();
+                symbols.push(DocumentSymbol {
+                    name,
+                    kind: "class".to_string(),
+                    range: node_to_range(node),
+                    selection_range: node_to_range(name_node),
+                    children: Vec::new(),
+                });
+            }
+        },
+        "var_declaration" | "const_declaration" => {
+            // Extract variable declarations
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "var_spec" || child.kind() == "const_spec" {
+                    if let Some(name_node) = child.child_by_field_name("name") {
+                        let name = name_node.utf8_text(source_code.as_bytes()).unwrap_or("variable").to_string();
+                        symbols.push(DocumentSymbol {
+                            name,
+                            kind: "variable".to_string(),
+                            range: node_to_range(child),
+                            selection_range: node_to_range(name_node),
+                            children: Vec::new(),
+                        });
+                    }
+                }
+            }
+        },
+        "call_expression" => {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                let function_text = function_node.utf8_text(source_code.as_bytes()).unwrap_or("call");
+                if function_text.starts_with("fmt.") {
+                    symbols.push(DocumentSymbol {
+                        name: function_text.to_string(),
+                        kind: "function".to_string(),
+                        range: node_to_range(node),
+                        selection_range: node_to_range(function_node),
+                        children: Vec::new(),
+                    });
+                }
+            }
+        },
+        _ => {}
+    }
+}
+
+fn extract_generic_node(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>) {
+    let kind = node.kind();
+    
+    // Generic function detection
+    if kind.contains("function") || kind.contains("method") || kind.contains("def") {
+        if let Some(name) = extract_name_from_node(node, source_code) {
+            symbols.push(DocumentSymbol {
+                name,
+                kind: "function".to_string(),
+                range: node_to_range(node),
+                selection_range: node_to_range(node),
+                children: Vec::new(),
+            });
+        }
+    }
+    // Generic class detection
+    else if kind.contains("class") || kind.contains("struct") || kind.contains("interface") {
+        if let Some(name) = extract_name_from_node(node, source_code) {
+            symbols.push(DocumentSymbol {
+                name,
+                kind: "class".to_string(),
+                range: node_to_range(node),
+                selection_range: node_to_range(node),
+                children: Vec::new(),
+            });
         }
     }
 }
 
-// Language-specific implementations
-// Note: Removed unused language-specific functions - now using unified keyword-based approach
+fn extract_name_from_node(node: Node, source_code: &str) -> Option<String> {
+    // Try field name first
+    if let Some(name_node) = node.child_by_field_name("name") {
+        return Some(name_node.utf8_text(source_code.as_bytes()).unwrap_or("unnamed").to_string());
+    }
+    
+    // Look for identifier child
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "identifier" {
+            return Some(child.utf8_text(source_code.as_bytes()).unwrap_or("unnamed").to_string());
+        }
+    }
+    
+    None
+}
 
 // Language Server Commands
 use std::io::BufRead;

@@ -110,7 +110,7 @@ class OutlinePanel {
     const fileName = this.currentEditor.currentFile?.name || 'untitled';
     const sourceCode = this.currentEditor.content || '';
     const languageId = this.getLanguageFromFileName(fileName);
-    const queries = this.getQueriesForLanguage(languageId);
+    const queries = []; // No longer using keyword queries - Tree-sitter handles everything
 
         try {
       // Debug Tauri availability
@@ -325,8 +325,8 @@ class OutlinePanel {
     // Create item container
     const itemContainer = document.createElement('div');
     itemContainer.className = 'outline-item-content';
-    // Set base padding plus level-based indentation
-    itemContainer.style.paddingLeft = `${8 + (level * 16)}px`;
+    // Set base padding plus level-based indentation (24px per level for proper tab-like indentation)
+    itemContainer.style.paddingLeft = `${8 + (level * 24)}px`;
 
     // Add expand/collapse arrow for items with children
     const hasChildren = symbol.children && symbol.children.length > 0;
