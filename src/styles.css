@@ -1776,7 +1776,6 @@ body {
 .git-commit-dropdown-menu {
   position: absolute;
   top: 100%;
-  left: 0;
   right: 0;
   background: var(--sidebar-bg);
   border: 1px solid var(--border-color);
@@ -1803,6 +1802,12 @@ body {
 
 .git-commit-option:hover {
   background: var(--button-hover-bg);
+}
+
+.git-commit-option svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .git-commit-option:first-child {

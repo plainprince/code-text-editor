@@ -60,10 +60,23 @@ class GitPanel {
     }
 
     try {
+      const commitInput = document.querySelector('.git-commit-input');
+      const hadFocus = document.activeElement === commitInput;
+      const selectionStart = commitInput?.selectionStart;
+      const selectionEnd = commitInput?.selectionEnd;
+
       this.gitStatus = await window.__TAURI__.core.invoke('git_status', { 
         path: this.workspacePath 
       });
       this.renderContent();
+
+      if (hadFocus) {
+        const newCommitInput = document.querySelector('.git-commit-input');
+        if (newCommitInput) {
+          newCommitInput.focus();
+          newCommitInput.setSelectionRange(selectionStart, selectionEnd);
+        }
+      }
     } catch (error) {
       console.error('Error getting git status:', error);
       this.gitStatus = null;
@@ -133,37 +146,30 @@ class GitPanel {
         <div class="git-branch">
           <span class="git-branch-icon">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4.5 3A1.5 1.5 0 003 4.5v7A1.5 1.5 0 004.5 13h7a1.5 1.5 0 001.5-1.5V8.5L10 6 8.5 7.5 4.5 3z"/>
-              <path d="M6 3l6 6v4.5A1.5 1.5 0 0110.5 15h-7A1.5 1.5 0 012 13.5v-7A1.5 1.5 0 013.5 5H6V3z"/>
+              <path d="M9.5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm1.28 1.22a.75.75 0 0 0-1.06 0L8 6.22l-1.72-1.75a.75.75 0 0 0-1.06 1.06L6.94 7.5l-1.72 1.72a.75.75 0 1 0 1.06 1.06L8 8.56l1.72 1.72a.75.75 0 1 0 1.06-1.06L9.06 7.5l1.72-1.72a.75.75 0 0 0 0-1.06zM3.75 3a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm0 9a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm8.5-9a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z"></path>
             </svg>
           </span>
           <span class="git-branch-name">${branch || 'No branch'}</span>
           ${ahead > 0 ? `<span class="git-ahead">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 2l3 3H9v6H7V5H5l3-3z"/>
+              <path d="M8 1.2l-4 4 1.4 1.4 1.6-1.6v8h2v-8l1.6 1.6 1.4-1.4-4-4z"/>
             </svg>${ahead}
           </span>` : ''}
           ${behind > 0 ? `<span class="git-behind">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 14l-3-3h2V5h2v6h2l-3 3z"/>
+              <path d="M8 14.8l4-4-1.4-1.4-1.6 1.6v-8h-2v8l-1.6-1.6-1.4 1.4 4 4z"/>
             </svg>${behind}
           </span>` : ''}
         </div>
         <div class="git-header-actions">
-          ${ahead > 0 || behind > 0 ? `
-            <button class="btn btn-sm git-sync-btn" onclick="gitPanel.syncChanges()" title="Sync Changes">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 3V1L5 4l3 3V5c3.31 0 6 2.69 6 6 0 .85-.18 1.65-.5 2.37l1.5 1.5C15.55 13.53 16 11.84 16 10c0-4.42-3.58-8-8-8z"/>
-                <path d="M8 13v2l3-3-3-3v2c-3.31 0-6-2.69-6-6 0-.85.18-1.65.5-2.37L1 1.13C.45 2.47 0 4.16 0 6c0 4.42 3.58 8 8 8z"/>
-              </svg>
-            </button>
-          ` : ''}
+          <button class="btn btn-sm git-sync-btn" onclick="gitPanel.syncChanges()" title="Sync Changes">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="octicon octicon-sync">
+              <path fill-rule="evenodd" d="M8 2.5a5.5 5.5 0 103.407 9.458l.09.063.03.018.028.016.033.018.02.01.034.017.022.008.035.012.02.006.038.01.018.004.04.008.017.003.04.006.014.002.043.004h.001a.5.5 0 00.499-1 .5.5 0 00-.499-1h-.002l-.04-.004a4.5 4.5 0 11-2.99-8.498.5.5 0 10.998.05A5.5 5.5 0 008 2.5zM12 8a4 4 0 11-8 0 4 4 0 018 0zm-1.124.819a.5.5 0 00-.632-.782l-1.5 1.2V5.5a.5.5 0 00-1 0v3.737l-1.5-1.2a.5.5 0 00-.632.782l2.25 1.8a.5.5 0 00.632 0l2.25-1.8z"></path>
+            </svg>
+          </button>
           <button class="btn btn-sm git-refresh-btn" onclick="gitPanel.refreshStatus()" title="Refresh">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 2.5a5.5 5.5 0 00-5.207 3.777.5.5 0 01-.943-.334A6.5 6.5 0 0113.5 8a.5.5 0 01-1 0A5.5 5.5 0 008 2.5z"/>
-              <path d="M1.5 8a.5.5 0 01.5-.5 5.5 5.5 0 005.207 3.777.5.5 0 01.943.334A6.5 6.5 0 012.5 8a.5.5 0 01-1 0z"/>
-              <path d="M10 3L8.5 4.5 10 6"/>
-              <path d="M6 13l1.5-1.5L6 10"/>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="octicon octicon-sync">
+                <path fill-rule="evenodd" d="M8 2.5a5.5 5.5 0 103.407 9.458l.09.063.03.018.028.016.033.018.02.01.034.017.022.008.035.012.02.006.038.01.018.004.04.008.017.003.04.006.014.002.043.004h.001a.5.5 0 00.499-1 .5.5 0 00-.499-1h-.002l-.04-.004a4.5 4.5 0 11-2.99-8.498.5.5 0 10.998.05A5.5 5.5 0 008 2.5zM12 8a4 4 0 11-8 0 4 4 0 018 0zm-1.124.819a.5.5 0 00-.632-.782l-1.5 1.2V5.5a.5.5 0 00-1 0v3.737l-1.5-1.2a.5.5 0 00-.632.782l2.25 1.8a.5.5 0 00.632 0l2.25-1.8z"></path>
             </svg>
           </button>
         </div>
@@ -206,32 +212,32 @@ class GitPanel {
                 ${!this.commitMessage.trim() ? 'disabled' : ''}
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.5-4.5z"/>
+                  <path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
                 </svg>
                 Commit
               </button>
               <div class="git-commit-dropdown">
                 <button class="btn btn-primary git-commit-dropdown-btn" onclick="gitPanel.toggleCommitDropdown(event)">
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M4 6l4 4 4-4H4z"/>
+                    <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06z"/>
                   </svg>
                 </button>
                 <div class="git-commit-dropdown-menu" style="display: none;">
                   <button class="git-commit-option" onclick="gitPanel.commit()">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.5-4.5z"/>
+                      <path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
                     </svg>
                     Commit
                   </button>
                   <button class="git-commit-option" onclick="gitPanel.commitAndPush()">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M8 2l3 3H9v6H7V5H5l3-3z"/>
+                      <path d="M8 1.2l-4 4 1.4 1.4 1.6-1.6v8h2v-8l1.6 1.6 1.4-1.4-4-4z"/>
                     </svg>
                     Commit & Push
                   </button>
                   <button class="git-commit-option" onclick="gitPanel.commitAmend()">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M8 16A8 8 0 108 0a8 8 0 000 16zM5.354 6.646a.5.5 0 01.708 0L8 8.586l1.938-1.94a.5.5 0 01.708.708L9.414 8.5l1.232 1.232a.5.5 0 01-.708.708L8 8.5 6.062 10.44a.5.5 0 01-.708-.708L6.586 8.5 5.354 7.268a.5.5 0 010-.708z"/>
+                      <path fill-rule="evenodd" d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.25 1.083a.75.75 0 0 1-.918-.918l1.083-3.25a1.75 1.75 0 0 1 .445-.756l8.61-8.61zM12.25 3.5l-6.5 6.5-1.5 1.5.75.75 1.5-1.5 6.5-6.5-1.25-1.25z"/>
                     </svg>
                     Commit (Amend)
                   </button>
@@ -295,8 +301,8 @@ class GitPanel {
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
               ${file.staged ? 
-                '<path d="M4 8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' : 
-                '<path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+                '<path fill-rule="evenodd" d="M2 7.75A.75.75 0 0 1 2.75 7h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 7.75z"/>' : 
+                '<path fill-rule="evenodd" d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 1 1 0 1.5H8.5v4.25a.75.75 0 1 1-1.5 0V8.5H2.75a.75.75 0 1 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2z"/>'
               }
             </svg>
           </button>
@@ -307,13 +313,13 @@ class GitPanel {
 
   getStatusIcon(status) {
     const icons = {
-      'M': '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4" fill="currentColor"/></svg>', // Modified
-      'A': '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>', // Added
-      'D': '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>', // Deleted
-      'R': '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 8h12m-4-4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', // Renamed
-      'C': '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 2h8v12H4z" stroke="currentColor" stroke-width="2" fill="none"/><path d="M2 4h8v12H2z" stroke="currentColor" stroke-width="2" fill="none"/></svg>', // Copied
-      'U': '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M8 6l-3 3M8 6l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', // Unmerged
-      '?': '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6 6c0-1.1.9-2 2-2s2 .9 2 2c0 1-1 1.5-2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>', // Untracked
+      'M': '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8z"/></svg>', // Modified
+      'A': '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 110 1.5H8.5v4.25a.75.75 0 11-1.5 0V8.5H2.75a.75.75 0 110-1.5H7V2.75A.75.75 0 017.75 2z"/></svg>', // Added
+      'D': '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M2 7.75A.75.75 0 012.75 7h10.5a.75.75 0 010 1.5H2.75A.75.75 0 012 7.75z"/></svg>', // Deleted
+      'R': '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8.22 2.97a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L11.94 8 8.22 4.28a.75.75 0 010-1.06zM3.22 2.97a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06L4.28 12.78a.75.75 0 01-1.06-1.06L6.94 8 3.22 4.28a.75.75 0 010-1.06z"/></svg>', // Renamed
+      'C': '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5zm5-5.25A1.75 1.75 0 016.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.5.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>', // Copied
+      'U': '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8.22 1.75c.414 0 .75.336.75.75v6.5a.75.75 0 01-1.5 0v-6.5a.75.75 0 01.75-.75zM8 13a1 1 0 100-2 1 1 0 000 2z"/><path fill-rule="evenodd" d="M8.973.255a2.25 2.25 0 00-1.946 0L.942 6.164a.25.25 0 00.193.436H14.86a.25.25 0 00.193-.436L8.973.255zM8 1.5L13.84 6.75H2.16L8 1.5z"/></svg>', // Unmerged
+      '?': '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3.5a.75.75 0 01.75.75v2.5a.75.75 0 01-1.5 0v-2.5A.75.75 0 018 4.5zM8 11a1 1 0 100-2 1 1 0 000 2z"/></svg>', // Untracked
     };
     return icons[status] || status;
   }
