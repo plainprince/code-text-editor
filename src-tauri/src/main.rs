@@ -13,7 +13,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
-use tree_sitter::{Language, Parser, Node, Tree, StreamingIterator};
+use tree_sitter::{Language, Parser, Node, Tree};
+use regex::Regex;
 
 #[tauri::command(rename_all = "snake_case")]
 fn get_app_support_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
@@ -83,7 +84,9 @@ struct Range {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SymbolQuery {
     kind: String,
-    query: String,
+    keyword: String,
+    #[serde(rename = "useRegex")]
+    use_regex: Option<bool>,
 }
 
 // File system commands
@@ -898,19 +901,21 @@ fn extract_symbols_from_tree(tree: &Tree, source_code: &str, language_id: &str, 
     
     match language_id {
         "javascript" | "jsx" | "typescript" | "tsx" => {
+            // Use both hierarchical parsing and keyword matching for JS
             extract_js_symbols(root_node, source_code, &mut symbols, queries);
+            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
         },
         "python" => {
-            extract_python_symbols(root_node, source_code, &mut symbols, queries);
+            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
         },
         "rust" => {
-            extract_rust_symbols(root_node, source_code, &mut symbols, queries);
+            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
         },
         "go" => {
-            extract_go_symbols(root_node, source_code, &mut symbols, queries);
+            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
         },
         _ => {
-            extract_generic_symbols(root_node, source_code, &mut symbols, queries);
+            extract_keyword_symbols(root_node, source_code, &mut symbols, queries);
         }
     }
     
@@ -1160,65 +1165,92 @@ fn node_to_range(node: Node) -> Range {
     }
 }
 
-// Placeholder implementations for other languages
-fn extract_python_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
-    // TODO: Implement Python symbol extraction
-    extract_generic_symbols(node, source_code, symbols, queries);
-}
-
-fn extract_rust_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
-    // TODO: Implement Rust symbol extraction  
-    extract_generic_symbols(node, source_code, symbols, queries);
-}
-
-fn extract_go_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
-    // TODO: Implement Go symbol extraction
-    extract_generic_symbols(node, source_code, symbols, queries);
-}
-
-fn extract_generic_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, _queries: &Vec<SymbolQuery>) {
-    let mut cursor = node.walk();
+// Keyword-based symbol extraction with regex support
+fn extract_keyword_symbols(node: Node, source_code: &str, symbols: &mut Vec<DocumentSymbol>, queries: &Vec<SymbolQuery>) {
+    let text = node.utf8_text(source_code.as_bytes()).unwrap_or("");
+    let lines: Vec<&str> = text.lines().collect();
     
-    for child in node.children(&mut cursor) {
-        let kind_str = child.kind();
+    for (line_index, line) in lines.iter().enumerate() {
+        let trimmed_line = line.trim();
+        if trimmed_line.is_empty() || trimmed_line.starts_with("//") || trimmed_line.starts_with("#") {
+            continue;
+        }
         
-        // Generic patterns for functions and classes
-        if kind_str.contains("function") || kind_str.contains("method") {
-            if let Some(name) = get_generic_name(child, source_code) {
+        for query in queries {
+            let use_regex = query.use_regex.unwrap_or(false);
+            let matched = if use_regex {
+                // Use regex matching
+                match Regex::new(&query.keyword) {
+                    Ok(regex) => regex.is_match(trimmed_line),
+                    Err(_) => false, // Invalid regex, skip
+                }
+            } else {
+                // Use literal keyword matching
+                trimmed_line.contains(&query.keyword)
+            };
+            
+            if matched {
+                // Calculate position
+                let start_pos = node.start_position();
+                let line_number = start_pos.row + line_index;
+                
+                // Extract the relevant part for display
+                let display_name = if use_regex {
+                    // For regex matches, try to extract the matched part
+                    match Regex::new(&query.keyword) {
+                        Ok(regex) => {
+                            if let Some(mat) = regex.find(trimmed_line) {
+                                mat.as_str().to_string()
+                            } else {
+                                trimmed_line.to_string()
+                            }
+                        },
+                        Err(_) => trimmed_line.to_string(),
+                    }
+                } else {
+                    // For literal matches, extract around the keyword
+                    if let Some(pos) = trimmed_line.find(&query.keyword) {
+                        let start = pos.saturating_sub(10);
+                        let end = (pos + query.keyword.len() + 10).min(trimmed_line.len());
+                        trimmed_line[start..end].trim().to_string()
+                    } else {
+                        trimmed_line.to_string()
+                    }
+                };
+                
+                // Limit display name length
+                let final_name = if display_name.len() > 50 {
+                    format!("{}...", &display_name[..47])
+                } else {
+                    display_name
+                };
+                
                 symbols.push(DocumentSymbol {
-                    name,
-                    kind: "function".to_string(), // Function
-                    range: node_to_range(child),
-                    selection_range: node_to_range(child),
+                    name: final_name,
+                    kind: query.kind.clone(),
+                    range: Range {
+                        start_line_number: line_number as u32 + 1,
+                        start_column: 1,
+                        end_line_number: line_number as u32 + 1,
+                        end_column: line.len() as u32 + 1,
+                    },
+                    selection_range: Range {
+                        start_line_number: line_number as u32 + 1,
+                        start_column: 1,
+                        end_line_number: line_number as u32 + 1,
+                        end_column: line.len() as u32 + 1,
+                    },
                     children: Vec::new(),
                 });
+                
+                break; // Only match once per line
             }
-        } else if kind_str.contains("class") || kind_str.contains("struct") {
-            if let Some(name) = get_generic_name(child, source_code) {
-                symbols.push(DocumentSymbol {
-                    name,
-                    kind: "class".to_string(), // Class
-                    range: node_to_range(child),
-                    selection_range: node_to_range(child),
-                    children: Vec::new(),
-                });
-            }
-        } else {
-            // Recurse into children
-            extract_generic_symbols(child, source_code, symbols, &Vec::new());
         }
     }
 }
 
-fn get_generic_name(node: Node, source_code: &str) -> Option<String> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "identifier" {
-            return Some(child.utf8_text(source_code.as_bytes()).unwrap_or("unnamed").to_string());
-        }
-    }
-    None
-}
+// Language-specific implementations
+// Note: Removed unused language-specific functions - now using unified keyword-based approach
 
 // Language Server Commands
 use std::io::BufRead;

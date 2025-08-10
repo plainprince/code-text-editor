@@ -176,24 +176,118 @@ class OutlinePanel {
     return languageMap[ext] || 'plaintext';
   }
 
-  getQueriesForLanguage(languageId) {
+    getKeywordConfigForLanguage(languageId) {
+    // Get current theme configuration
+    const themes = {
+      dark: {
+        customKeywords: {
+          jsKeywords: ["const", "let", "var", "function", "class", "extends", "implements", "interface", "type", "enum"],
+          jsBuiltins: ["console", "window", "document", "localStorage", "sessionStorage", "fetch", "Promise"],
+          pythonKeywords: ["def", "class", "import", "from", "as", "with", "lambda", "yield", "async", "await"],
+          pythonBuiltins: ["print", "len", "range", "enumerate", "zip", "map", "filter", "reduce"],
+          rustKeywords: ["fn", "struct", "enum", "impl", "trait", "mod", "use", "pub", "mut", "let"],
+          rustBuiltins: ["Vec", "HashMap", "Option", "Result", "String", "str"],
+          goKeywords: ["func", "struct", "interface", "type", "var", "const", "package", "import"],
+          goBuiltins: ["fmt", "log", "http", "json", "time", "context"],
+          controlFlow: ["if", "else", "elif", "for", "while", "switch", "case", "break", "continue", "return"],
+          types: ["int", "float", "string", "bool", "array", "object", "null", "undefined"]
+        }
+      }
+    };
+
+    const keywords = themes.dark.customKeywords;
+
     if (languageId === 'javascript' || languageId === 'typescript') {
-        return [
-            { kind: 'function', query: '(function_declaration name: (identifier) @name)' },
-            { kind: 'function', query: '(method_definition name: (property_identifier) @name)' },
-            { kind: 'function', query: '(variable_declarator name: (identifier) @name value: (arrow_function))' },
-            { kind: 'function', query: '(variable_declarator name: (identifier) @name value: (function_expression))' },
-            { kind: 'variable', query: '(variable_declarator name: (identifier) @name)' },
-            { kind: 'class', query: '(class_declaration name: (identifier) @name)' },
-            { kind: 'function', query: '(call_expression function: (member_expression property: (property_identifier) @name))' },
-            { kind: 'function', query: '(call_expression function: (identifier) @name)' },
-            { kind: 'struct', query: '(for_statement) @name' },
-            { kind: 'struct', query: '(while_statement) @name' },
-            { kind: 'struct', query: '(if_statement) @name' },
-        ];
+      return {
+        keywords: [
+          // Only include function and class declarations for typical outline behavior
+          { type: "function", keyword: "function", useRegex: false },
+          { type: "class", keyword: "class", useRegex: false },
+          { type: "function", keyword: "const.*=.*=>", useRegex: true }, // arrow functions
+          { type: "function", keyword: "const.*=.*function", useRegex: true }, // function expressions
+        ],
+        builtins: [
+          // Add regex support for console methods
+          { type: "function", keyword: "console\\..*", useRegex: true },
+          // Add other common patterns with regex
+          { type: "function", keyword: "Math\\..*", useRegex: true },
+          { type: "function", keyword: "JSON\\..*", useRegex: true },
+          { type: "function", keyword: "Object\\..*", useRegex: true },
+          { type: "function", keyword: "Array\\..*", useRegex: true }
+        ]
+      };
+    } else if (languageId === 'python') {
+      return {
+        keywords: [
+          { type: "function", keyword: "def", useRegex: false },
+          { type: "class", keyword: "class", useRegex: false },
+        ],
+        builtins: [
+          // Python method calls
+          { type: "function", keyword: "print\\(", useRegex: true },
+          { type: "function", keyword: ".*\\.append\\(", useRegex: true },
+          { type: "function", keyword: ".*\\.join\\(", useRegex: true },
+        ]
+      };
+    } else if (languageId === 'rust') {
+      return {
+        keywords: [
+          { type: "function", keyword: "fn", useRegex: false },
+          { type: "class", keyword: "struct", useRegex: false },
+          { type: "class", keyword: "enum", useRegex: false },
+          { type: "class", keyword: "impl", useRegex: false },
+        ],
+        builtins: [
+          // Rust specific patterns
+          { type: "function", keyword: "println!", useRegex: false },
+          { type: "function", keyword: ".*::.*\\(", useRegex: true }, // method calls
+        ]
+      };
+    } else if (languageId === 'go') {
+      return {
+        keywords: [
+          { type: "function", keyword: "func", useRegex: false },
+          { type: "class", keyword: "struct", useRegex: false },
+          { type: "class", keyword: "interface", useRegex: false },
+          { type: "class", keyword: "type", useRegex: false },
+        ],
+        builtins: [
+          // Go specific patterns
+          { type: "function", keyword: "fmt\\..*\\(", useRegex: true }
+        ]
+      };
     }
-    return [];
-}
+    
+    return { keywords: [], builtins: [] };
+  }
+
+  getQueriesForLanguage(languageId) {
+    // Convert keyword config to the format expected by Rust backend
+    const config = this.getKeywordConfigForLanguage(languageId);
+    
+    // Flatten into a single array for the backend
+    const queries = [];
+    
+    // Add keywords
+    config.keywords.forEach(item => {
+      queries.push({
+        kind: item.type,
+        keyword: item.keyword,
+        useRegex: item.useRegex || false
+      });
+    });
+    
+    // Add builtins
+    config.builtins.forEach(item => {
+      queries.push({
+        kind: item.type,
+        keyword: item.keyword,
+        useRegex: item.useRegex || false
+      });
+    });
+    
+    return queries;
+  }
 
   // Clear the outline
   clearOutline() {
