@@ -120,4 +120,97 @@ export class Modal {
   static async alert(title, message = '') {
     return await this.showDialog(title, message, 'info');
   }
+
+  static async showCustomDialog(title, content, buttons) {
+    return new Promise((resolve) => {
+      // Remove any existing modal
+      const existingModal = document.querySelector('.modal-overlay');
+      if (existingModal) {
+        existingModal.remove();
+      }
+
+      // Create modal overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      
+      // Create modal container
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      
+      // Create header
+      const header = document.createElement('div');
+      header.className = 'modal-header';
+      header.innerHTML = `<h3>${title}</h3>`;
+      
+      // Create body with custom content
+      const body = document.createElement('div');
+      body.className = 'modal-body';
+      body.innerHTML = content;
+      
+      // Create footer with custom buttons
+      const footer = document.createElement('div');
+      footer.className = 'modal-footer';
+      
+      buttons.forEach(button => {
+        const btn = document.createElement('button');
+        btn.className = `btn ${button.className || 'btn-primary'}`;
+        btn.textContent = button.label;
+        btn.onclick = () => {
+          overlay.remove();
+          
+          // Collect checkbox values if any
+          const checkboxes = body.querySelectorAll('input[type="checkbox"]:checked');
+          const selectedValues = Array.from(checkboxes).map(cb => cb.value);
+          
+          resolve({ 
+            button: button.value, 
+            selectedValues,
+            formData: this.collectFormData(body)
+          });
+        };
+        footer.appendChild(btn);
+      });
+      
+      // Assemble modal
+      modal.appendChild(header);
+      modal.appendChild(body);
+      modal.appendChild(footer);
+      overlay.appendChild(modal);
+      
+      // Add to DOM
+      document.body.appendChild(overlay);
+      
+      // Focus first input if any
+      const firstInput = body.querySelector('input, textarea, select');
+      if (firstInput) {
+        firstInput.focus();
+      }
+      
+      // ESC key handler
+      const escHandler = (e) => {
+        if (e.key === 'Escape') {
+          document.removeEventListener('keydown', escHandler);
+          overlay.remove();
+          resolve({ button: 'cancel', selectedValues: [], formData: {} });
+        }
+      };
+      document.addEventListener('keydown', escHandler);
+    });
+  }
+
+  static collectFormData(container) {
+    const formData = {};
+    const inputs = container.querySelectorAll('input, textarea, select');
+    inputs.forEach(input => {
+      if (input.name) {
+        if (input.type === 'checkbox') {
+          if (!formData[input.name]) formData[input.name] = [];
+          if (input.checked) formData[input.name].push(input.value);
+        } else {
+          formData[input.name] = input.value;
+        }
+      }
+    });
+    return formData;
+  }
 }

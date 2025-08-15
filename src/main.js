@@ -139,9 +139,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   initDraggablePanes();
 
   const aiPanel = new AiPanel('ai-panel');
-  
-  // Show AI panel by default for testing
-  setRightPanel('ai-panel');
   window.aiPanel = aiPanel;
 });
 

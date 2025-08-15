@@ -37,12 +37,22 @@ export class AiPanel {
     this.panel.addEventListener('click', this.handlePanelClick.bind(this));
     this.input.addEventListener('input', this.handleInput.bind(this));
     this.setupDropdowns();
-    this.sendButton.addEventListener('click', () => this.sendMessage());
+    this.sendButton.addEventListener('click', () => {
+      if (this.chatManager.isStreaming) {
+        this.chatManager.stopStreaming();
+      } else {
+        this.sendMessage();
+      }
+    });
     this.contextButton.addEventListener('click', () => this.openContextMenu());
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        this.sendMessage();
+        if (this.chatManager.isStreaming) {
+          this.chatManager.stopStreaming();
+        } else {
+          this.sendMessage();
+        }
       }
     });
   }

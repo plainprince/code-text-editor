@@ -10,7 +10,7 @@ class DraggablePanes {
     this.startHeight = 0;
     
     this.minPaneSize = 150; // Minimum pane size in pixels
-    this.maxPaneSize = window.innerWidth * 0.8; // Maximum pane size
+    this.maxSidebarSize = 400; // Maximum sidebar size in pixels
     
     this.init();
   }
@@ -160,7 +160,7 @@ class DraggablePanes {
     if (leftPaneId === 'sidebar-left' && rightPaneId === 'main') {
       // Resizing left sidebar
       let newLeftWidth = currentLeftWidth + deltaX;
-      newLeftWidth = Math.max(this.minPaneSize, Math.min(newLeftWidth, this.maxPaneSize));
+      newLeftWidth = Math.max(this.minPaneSize, Math.min(newLeftWidth, this.maxSidebarSize));
       
       // Update grid keeping right width the same
       const rightWidth = currentColumns[2];
@@ -171,7 +171,7 @@ class DraggablePanes {
     } else if (leftPaneId === 'main' && rightPaneId === 'sidebar-right') {
       // Resizing right sidebar
       let newRightWidth = currentRightWidth - deltaX;
-      newRightWidth = Math.max(this.minPaneSize, Math.min(newRightWidth, this.maxPaneSize));
+      newRightWidth = Math.max(this.minPaneSize, Math.min(newRightWidth, this.maxSidebarSize));
       
       // Update grid keeping left width the same
       mainRow.style.gridTemplateColumns = `${currentLeftWidth}px 1fr ${newRightWidth}px`;
@@ -217,9 +217,6 @@ class DraggablePanes {
   }
   
   handleWindowResize() {
-    // Update max pane size on window resize
-    this.maxPaneSize = window.innerWidth * 0.8;
-    
     // Ensure panes don't exceed new limits
     this.constrainPaneSizes();
     
@@ -256,9 +253,9 @@ class DraggablePanes {
           pane.style.flexBasis = `${maxHeight}px`;
         }
       } else {
-        if (rect.width > this.maxPaneSize) {
-          pane.style.width = `${this.maxPaneSize}px`;
-          pane.style.flexBasis = `${this.maxPaneSize}px`;
+        if (rect.width > this.maxSidebarSize) {
+          pane.style.width = `${this.maxSidebarSize}px`;
+          pane.style.flexBasis = `${this.maxSidebarSize}px`;
         }
       }
     });

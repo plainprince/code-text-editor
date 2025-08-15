@@ -1050,10 +1050,18 @@ body {
   min-width: 200px;
 }
 
-#sidebar-left,
-#sidebar-right {
+#sidebar-left {
   flex-shrink: 0;
   min-width: 150px;
+}
+
+#sidebar-right {
+  flex-shrink: 0;
+  min-width: 0; /* Allow it to collapse to 0 when hidden */
+}
+
+#main-row.right-sidebar-visible #sidebar-right {
+  min-width: 250px; /* Set proper min-width when visible */
 }
 
 #terminal {
@@ -2037,15 +2045,26 @@ body {
 }
 
 /* AI Panel Styles */
+#ai-panel {
+  width: 100%;
+  height: 100%;
+}
+
 #ai-panel .sidebar-panel-content {
   background-color: var(--sidebar-bg);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 #ai-chat-history {
   flex-grow: 1;
   overflow-y: auto;
+  overflow-x: hidden; /* Prevent horizontal scrolling */
   padding: 10px;
   border-bottom: 1px solid var(--border-color);
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
 #ai-input-container {
@@ -2053,21 +2072,15 @@ body {
   border-top: 1px solid var(--border-color);
 }
 
-.ai-input-toolbar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
 #ai-input-wrapper {
   position: relative;
-  display: flex;
+  margin-bottom: 10px;
 }
 
 #ai-input {
   width: 100%;
   height: 80px;
-  resize: vertical;
+  resize: none; /* Make non-resizable */
   padding: 8px;
   border: 1px solid var(--border-color);
   background-color: var(--input-bg);
@@ -2075,10 +2088,14 @@ body {
   border-radius: 4px;
 }
 
+.ai-input-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 #ai-context-button {
-  position: absolute;
-  bottom: 10px;
-  right: 50px;
   background-color: var(--button-secondary-bg);
   color: var(--text-color);
   border: 1px solid var(--border-color);
@@ -2086,6 +2103,7 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
+  margin-left: auto; /* Push to right side */
 }
 
 #ai-context-button:hover {
@@ -2093,9 +2111,6 @@ body {
 }
 
 #ai-send-button {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
   background-color: var(--button-bg);
   color: var(--text-color);
   border: none;
@@ -2130,17 +2145,46 @@ body {
   position: absolute;
   bottom: 100%;
   left: 0;
-  right: 0;
   background-color: var(--bg-color);
   border: 1px solid var(--border-color);
   border-radius: 4px;
+  min-width: 120px;
   max-width: 200px;
   max-height: 200px;
-  overflow-y: auto;
   z-index: 1000;
   padding: 5px 0;
   margin-bottom: 5px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden; /* Prevent outer scrollbar */
+}
+
+/* Position dropdown to left edge if too close to right edge */
+.ai-input-toolbar .custom-dropdown:nth-last-child(-n+2) .dropdown-menu {
+  right: 0;
+  left: auto;
+}
+
+.dropdown-search {
+  width: calc(100% - 10px);
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-size: 12px;
+  margin: 5px 5px 8px 5px;
+  border-radius: 4px;
+}
+
+.dropdown-search:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.dropdown-items-container {
+  max-height: 130px;
+  overflow-y: auto;
+  padding: 0;
+  margin: 0;
 }
 
 .dropdown-item {
@@ -2151,6 +2195,10 @@ body {
   text-align: left;
   width: 100%;
   cursor: pointer;
+}
+
+.dropdown-item.hidden {
+  display: none;
 }
 
 .dropdown-item:hover {
@@ -2165,6 +2213,45 @@ body {
 
 .custom-dropdown.open .dropdown-menu {
   display: block;
+}
+
+/* AI Chat Messages */
+.ai-message {
+  margin-bottom: 15px;
+  max-width: 100%;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.ai-message.user {
+  background-color: var(--button-secondary-bg);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-left: 20px;
+}
+
+.ai-message.assistant {
+  background-color: var(--bg-color);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-right: 20px;
+  border: 1px solid var(--border-color);
+}
+
+.ai-message pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-x: auto;
+  background-color: var(--panel-header-bg);
+  padding: 8px;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+.ai-message code {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* AI Context Menu */

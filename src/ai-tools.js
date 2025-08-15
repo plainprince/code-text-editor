@@ -20,8 +20,14 @@ export class AITools {
 
   static async writeFile({ path, content }) {
     try {
-      await window.__TAURI__.fs.writeTextFile(path, content);
-      return { success: true, message: `Wrote to ${path}` };
+      // Use absolute path if needed, otherwise resolve relative to workspace
+      let fullPath = path;
+      if (!path.startsWith('/') && window.fileExplorer && window.fileExplorer.rootFolder) {
+        fullPath = `${window.fileExplorer.rootFolder}/${path}`;
+      }
+      
+      await window.__TAURI__.fs.writeTextFile(fullPath, content);
+      return { success: true, message: `File written successfully to ${fullPath}` };
     } catch (error) {
       return { success: false, error: error.toString() };
     }
@@ -38,9 +44,19 @@ export class AITools {
 
   static async runTerminalCommand({ command }) {
     try {
-      const cmd = new window.__TAURI__.shell.Command('sh', ['-c', command]);
-      const output = await cmd.execute();
-      return { success: output.code === 0, output: output.stdout, error: output.stderr };
+      // Use the existing run_command infrastructure
+      const result = await window.__TAURI__.core.invoke('run_command', {
+        command: 'sh',
+        args: ['-c', command],
+        cwd: window.fileExplorer?.rootFolder || '.'
+      });
+      
+      return { 
+        success: result.code === 0, 
+        output: result.stdout || result.output,
+        error: result.stderr,
+        code: result.code
+      };
     } catch (error) {
       return { success: false, error: error.toString() };
     }

@@ -13,15 +13,15 @@ export class ToolManager {
       'removeTodo': { description: 'Remove an item from the TODO list' },
     };
     this.modes = {
-      'ask': {
-        name: 'Ask',
-        description: 'No tools allowed, only file reading for context.',
-        allowedTools: ['readFile', 'listFiles']
-      },
       'agent': {
         name: 'Agent',
         description: 'All tools are allowed, including terminal commands.',
         allowedTools: Object.keys(this.tools)
+      },
+      'ask': {
+        name: 'Ask',
+        description: 'No tools allowed, only file reading for context.',
+        allowedTools: ['readFile', 'listFiles']
       }
     };
 
@@ -75,15 +75,17 @@ export class ToolManager {
     const content = `
       <div>
         <label for="mode-name">Mode Name:</label>
-        <input type="text" id="new-mode-name" class="modal-input" placeholder="e.g., Coder Mode">
+        <input type="text" name="modeName" class="modal-input" placeholder="e.g., Coder Mode" style="width: 100%; padding: 8px; margin-top: 5px;">
       </div>
       <div style="margin-top: 10px;">
         <label for="mode-description">Description:</label>
-        <textarea id="new-mode-desc" class="modal-textarea" placeholder="A short description of the mode"></textarea>
+        <textarea name="modeDesc" class="modal-textarea" placeholder="A short description of the mode" style="width: 100%; padding: 8px; margin-top: 5px; min-height: 60px;"></textarea>
       </div>
       <div style="margin-top: 10px;">
         <strong>Allowed Tools:</strong><br>
-        ${toolCheckboxes}
+        <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); padding: 10px; margin-top: 5px;">
+          ${toolCheckboxes}
+        </div>
       </div>
     `;
 
@@ -96,17 +98,21 @@ export class ToolManager {
       ]
     );
 
-    if (result === 'create') {
-      const name = document.getElementById('new-mode-name').value;
-      const description = document.getElementById('new-mode-desc').value;
-      const selectedTools = Array.from(document.querySelectorAll('input[name="tools"]:checked')).map(cb => cb.value);
+    if (result.button === 'create') {
+      const modeName = result.formData.modeName || '';
+      const modeDesc = result.formData.modeDesc || 'Custom mode';
+      const selectedTools = result.formData.tools || [];
       
-      if (name && description && selectedTools.length > 0) {
-        const key = name.toLowerCase().replace(/\s+/g, '-');
-        this.modes[key] = { name, description, allowedTools: selectedTools };
+      if (modeName && selectedTools.length > 0) {
+        const modeKey = modeName.toLowerCase().replace(/\s+/g, '_');
+        this.modes[modeKey] = {
+          name: modeName,
+          description: modeDesc,
+          allowedTools: selectedTools
+        };
         this.renderModeDropdown();
       } else {
-        Modal.alert('Error', 'Please fill out all fields and select at least one tool.');
+        Modal.alert('Error', 'Please enter a mode name and select at least one tool.');
       }
     }
   }

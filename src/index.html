@@ -95,27 +95,31 @@
             <div class="sidebar-panel-content">
               <div id="ai-chat-history"></div>
               <div id="ai-input-container">
+                <div id="ai-input-wrapper">
+                  <textarea id="ai-input" placeholder="Ask AI..."></textarea>
+                </div>
                 <div class="ai-input-toolbar">
                   <div class="custom-dropdown" id="ai-model-dropdown-container">
                     <button class="dropdown-toggle" id="ai-model-dropdown-button">Model</button>
                     <div class="dropdown-menu" id="ai-model-dropdown-menu">
-                      <!-- Models will be populated here -->
+                      <input type="text" id="ai-model-search" placeholder="Search models..." class="dropdown-search">
+                      <div class="dropdown-items-container">
+                        <!-- Models will be populated here -->
+                      </div>
                       <div class="dropdown-divider"></div>
+                      <button class="dropdown-item" id="ai-max-mode-toggle">🔥 Max Mode: OFF</button>
                       <button class="dropdown-item" id="ai-add-model-button">Add Model</button>
                     </div>
                   </div>
                   <div class="custom-dropdown" id="ai-mode-dropdown-container">
                     <button class="dropdown-toggle" id="ai-mode-dropdown-button">Mode</button>
                     <div class="dropdown-menu" id="ai-mode-dropdown-menu">
-                      <button class="dropdown-item" data-mode="ask">Ask</button>
                       <button class="dropdown-item" data-mode="agent">Agent</button>
+                      <button class="dropdown-item" data-mode="ask">Ask</button>
                       <div class="dropdown-divider"></div>
                       <button class="dropdown-item" id="ai-add-mode-button">Add Mode</button>
                     </div>
                   </div>
-                </div>
-                <div id="ai-input-wrapper">
-                  <textarea id="ai-input" placeholder="Ask AI..."></textarea>
                   <button id="ai-context-button" title="Add file context">@</button>
                   <button id="ai-send-button">➤</button>
                 </div>
@@ -326,6 +330,17 @@
           commandPalette: "Ctrl+Shift+P",
           settings: "Ctrl+,",
           toggleTerminal: "Ctrl+`"
+        },
+        icons: {
+          file: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
+          folder: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+          javascript: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#f7df1e"><path d="M0 0h24v24H0V0zm22.034 18.276c-.175-1.095-.888-2.015-3.003-2.873-.736-.345-1.554-.585-1.797-1.14-.091-.33-.105-.51-.046-.705.15-.646.915-.84 1.515-.66.39.12.75.42.976.9 1.034-.676 1.034-.676 1.755-1.125-.27-.42-.404-.601-.586-.78-.63-.705-1.469-1.065-2.834-1.034l-.705.089c-.676.165-1.32.525-1.71 1.005-1.14 1.291-.811 3.541.569 4.471 1.365 1.02 3.361 1.244 3.616 2.205.24 1.17-.87 1.545-1.966 1.41-.811-.18-1.26-.586-1.755-1.336l-1.83 1.051c.21.48.45.689.81 1.109 1.74 1.756 6.09 1.666 6.871-1.004.029-.09.24-.705.074-1.65l.046.067zm-8.983-7.245h-2.248c0 1.938-.009 3.864-.009 5.805 0 1.232.063 2.363-.138 2.711-.33.689-1.18.601-1.566.48-.396-.196-.597-.466-.83-.855-.063-.105-.11-.196-.127-.196l-1.825 1.125c.305.63.75 1.172 1.324 1.517.855.51 2.004.675 3.207.405.783-.226 1.458-.691 1.811-1.411.51-.93.402-2.07.397-3.346.012-2.054 0-4.109 0-6.179l.004-.056z"/></svg>',
+          html: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#e34c26"><path d="M1.5 0h21l-1.91 21.563L11.977 24l-8.564-2.438L1.5 0zm7.031 9.75l-.232-2.718 10.059.003.23-2.622L5.412 4.41l.698 8.01h9.126l-.326 3.426-2.91.804-2.955-.81-.188-2.11H6.248l.33 4.171L12 19.351l5.379-1.443.744-8.157H8.531z"/></svg>',
+          css: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#1572b6"><path d="M1.5 0h21l-1.91 21.563L11.977 24l-8.565-2.438L1.5 0zm17.09 4.413L5.41 4.41l.213 2.622 10.125.002-.255 2.716h-6.64l.24 2.573h6.182l-.366 3.523-2.91.804-2.956-.81-.188-2.11h-2.61l.29 3.855L12 19.288l5.373-1.53L18.59 4.414z"/></svg>',
+          json: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#ffd700"><path d="M5.854 4.854a.5.5 0 1 0-.708-.708L3.5 5.793a.5.5 0 0 0 0 .707l1.646 1.647a.5.5 0 0 0 .708-.708L4.707 6.5l1.147-1.146zM18.146 4.854a.5.5 0 0 1 .708-.708L20.5 5.793a.5.5 0 0 1 0 .707l-1.646 1.647a.5.5 0 0 1-.708-.708L19.293 6.5l-1.147-1.146zM12 2a.5.5 0 0 1 .5.5v19a.5.5 0 0 1-1 0v-19A.5.5 0 0 1 12 2z"/></svg>',
+          markdown: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 17v-5l2 2.5L18 12v5"/><path d="M6 17V7l4 6V7"/><rect x="2" y="5" width="20" height="14" rx="2"/></svg>',
+          python: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#3776ab"><path d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.77l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.17l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05-.05-1.23.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.26-.02.2-.01h13.17l.69-.05.59-.14.5-.22.41-.27.33-.32.27-.35.2-.36.15-.37.1-.35.07-.32.04-.27.02-.21V3.07l.01-.13-.02-.2-.04-.26-.1-.3-.16-.33-.25-.34-.34-.34-.45-.32-.59-.3-.73-.26-.9-.2L14.25.18zM12 1.25a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5zm2.25 9.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5z"/></svg>',
+          rust: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#ce422b"><path d="M12,0C5.373,0,0,5.373,0,12c0,6.627,5.373,12,12,12s12-5.373,12-12C24,5.373,18.627,0,12,0z M7.5,5 c0.828,0,1.5,0.672,1.5,1.5S8.328,8,7.5,8S6,7.328,6,6.5S6.672,5,7.5,5z M12,19c-3.866,0-7-3.134-7-7s3.134-7,7-7s7,3.134,7,7 S15.866,19,12,19z M16.5,8C15.672,8,15,7.328,15,6.5S15.672,5,16.5,5S18,5.672,18,6.5S17.328,8,16.5,8z"/></svg>'
         }
       };
     </script>
