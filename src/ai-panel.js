@@ -104,7 +104,10 @@ export class AiPanel {
     const lastChar = text[text.length - 1];
 
     if (lastChar === '@') {
-      this.openContextMenu();
+      // Delay to prevent immediate focus loss
+      setTimeout(() => {
+        this.openContextMenu();
+      }, 10);
     } else {
       this.closeContextMenu();
     }
@@ -112,8 +115,14 @@ export class AiPanel {
 
   openContextMenu() {
     this.contextMenu.classList.remove('hidden');
-    this.contextFileSearch.focus();
     this.populateFileList();
+    
+    // Don't focus the search immediately to avoid taking focus from input
+    setTimeout(() => {
+      if (this.contextFileSearch) {
+        this.contextFileSearch.focus();
+      }
+    }, 100);
   }
 
   async populateFileList() {

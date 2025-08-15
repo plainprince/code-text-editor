@@ -2294,6 +2294,62 @@ body {
   display: none;
 }
 
+/* AI Context Display */
+.context-display {
+  margin-top: 8px;
+  padding: 8px;
+  background-color: var(--panel-header-bg);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.context-label {
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 5px;
+  color: var(--text-color);
+}
+
+.context-files {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.context-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.context-file:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.context-file-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.context-file-remove {
+  margin-left: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.context-file-remove:hover {
+  color: var(--accent-color);
+}
+
 /* Chat Messages */
 .chat-message {
   padding: 8px;
