@@ -140,6 +140,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   const aiPanel = new AiPanel('ai-panel');
   window.aiPanel = aiPanel;
+  
+  // Expose panel functions globally
+  window.setRightPanel = setRightPanel;
+  window.setLeftPanel = setLeftPanel;
+  window.setBottomPanel = setBottomPanel;
 });
 
 // Panel management
