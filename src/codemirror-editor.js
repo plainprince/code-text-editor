@@ -24,7 +24,7 @@ import { indentWithTab } from '@codemirror/commands';
 import { createCodeMirrorTheme, getCurrentTheme } from './theme-system.js';
 
 class CodeMirrorEditor {
-  constructor(container) {
+  constructor(container, extensions = []) {
     this.container = container;
     this.currentFile = null;
     this.content = '';

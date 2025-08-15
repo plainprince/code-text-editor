@@ -92,7 +92,39 @@
         <div id="sidebar-right" style="display: none;">
           <div id="ai-panel" class="sidebar-panel">
             <div class="sidebar-panel-header">AI Assistant</div>
-            <div class="sidebar-panel-content"></div>
+            <div class="sidebar-panel-content">
+              <div id="ai-chat-history"></div>
+              <div id="ai-input-container">
+                <div class="ai-input-toolbar">
+                  <div class="custom-dropdown" id="ai-model-dropdown-container">
+                    <button class="dropdown-toggle" id="ai-model-dropdown-button">Model</button>
+                    <div class="dropdown-menu" id="ai-model-dropdown-menu">
+                      <!-- Models will be populated here -->
+                      <div class="dropdown-divider"></div>
+                      <button class="dropdown-item" id="ai-add-model-button">Add Model</button>
+                    </div>
+                  </div>
+                  <div class="custom-dropdown" id="ai-mode-dropdown-container">
+                    <button class="dropdown-toggle" id="ai-mode-dropdown-button">Mode</button>
+                    <div class="dropdown-menu" id="ai-mode-dropdown-menu">
+                      <button class="dropdown-item" data-mode="ask">Ask</button>
+                      <button class="dropdown-item" data-mode="agent">Agent</button>
+                      <div class="dropdown-divider"></div>
+                      <button class="dropdown-item" id="ai-add-mode-button">Add Mode</button>
+                    </div>
+                  </div>
+                </div>
+                <div id="ai-input-wrapper">
+                  <textarea id="ai-input" placeholder="Ask AI..."></textarea>
+                  <button id="ai-context-button" title="Add file context">@</button>
+                  <button id="ai-send-button">➤</button>
+                </div>
+                <div id="ai-context-menu" class="hidden">
+                  <input type="text" id="ai-context-file-search" placeholder="Search for a file...">
+                  <ul id="ai-context-file-list"></ul>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

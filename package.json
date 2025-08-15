@@ -41,6 +41,8 @@
     "@tauri-apps/plugin-shell": "^2.0.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "marked": "^16.1.2",
+    "openai": "^5.12.2",
     "ts-lsp-client": "^1.0.3",
     "vscode-languageclient": "^9.0.1"
   },

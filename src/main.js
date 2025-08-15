@@ -5,6 +5,8 @@ import FileExplorer from './file-explorer.js';
 import CodeMirrorEditor from './codemirror-editor.js';
 import { TerminalManager } from './terminal.js';
 import TabManager from './tab-manager.js';
+import { AiPanel } from './ai-panel.js';
+import { pendingEditsField } from './edit-manager.js';
 
 import DraggablePanes from './draggable-panes.js';
 import { getWorkspaceFiles, searchInFiles, fileExists, writeFile as fsWriteFile, readFile as fsReadFile } from './file-system.js';
@@ -12,6 +14,7 @@ import { writeTextFile, shutdownAllLanguageServers } from './tauri-helpers.js';
 import OutlinePanel from './outline.js';
 import GitPanel from './git-panel.js';
 import { createDefaultThemeSettings } from './theme-system.js';
+import { SnapshotManager } from './snapshot-manager.js';
 
 window.addEventListener('beforeunload', () => {
   shutdownAllLanguageServers();
@@ -47,6 +50,7 @@ let tabManager = null;
 
 let terminalInstance = null;
 let draggablePanes = null;
+let snapshotManager = null;
 
 // Utility function for deep merging settings objects
 function deepMerge(target, source) {
@@ -133,6 +137,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   
   // Initialize draggable panes
   initDraggablePanes();
+
+  const aiPanel = new AiPanel('ai-panel');
+  
+  // Show AI panel by default for testing
+  setRightPanel('ai-panel');
+  window.aiPanel = aiPanel;
 });
 
 // Panel management
@@ -447,8 +457,8 @@ function updateEditor(filePath, content, fileName) {
       welcomeScreen.style.display = 'none';
     }
     
-    // Create editor instance
-    editorInstance = new CodeMirrorEditor(editorContainer);
+    // Create editor instance with the pending edits field
+    editorInstance = new CodeMirrorEditor(editorContainer, [pendingEditsField]);
   }
   
   // Set content first
@@ -1609,6 +1619,8 @@ async function initTerminal() {
       if (terminalInstance && e.detail.path) {
         terminalInstance.setWorkingDirectory(e.detail.path);
       }
+      snapshotManager = new SnapshotManager(e.detail.path);
+      snapshotManager.init();
     });
   } catch (err) {
     console.error('Failed to initialize terminal:', err);

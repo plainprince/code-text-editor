@@ -938,7 +938,7 @@ async fn create_terminal_session(
     Ok(session_id)
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 async fn write_to_terminal(
     session_id: String,
     data: String,
@@ -960,7 +960,7 @@ async fn write_to_terminal(
     }
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 async fn close_terminal_session(
     session_id: String,
     sessions: tauri::State<'_, TerminalSessions>,
@@ -970,7 +970,7 @@ async fn close_terminal_session(
     Ok(())
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 async fn resize_terminal(
     session_id: String,
     rows: u16,
